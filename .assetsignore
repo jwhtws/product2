@@ -1,0 +1,10 @@
+.git
+.github
+.vscode
+node_modules
+식품_일반음식점.csv
+schema.sql
+wrangler.toml
+scripts
+tests
+test-results
