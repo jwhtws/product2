@@ -5,6 +5,22 @@ async function audit(context, action, detail) {
     .bind(action, detail, Date.now()).run();
 }
 
+async function github(context, path, options = {}) {
+  const headers = {
+    accept: 'application/vnd.github+json',
+    'user-agent': 'mukdang-admin',
+    'x-github-api-version': '2022-11-28',
+    ...(options.headers || {})
+  };
+  if (context.env.GITHUB_ACTIONS_TOKEN) headers.authorization = `Bearer ${context.env.GITHUB_ACTIONS_TOKEN}`;
+  return fetch(`https://api.github.com/repos/jwhtws/product1${path}`, { ...options, headers });
+}
+
+async function remoteJson(url) {
+  const response = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
+  return response.ok ? response.json() : null;
+}
+
 export async function onRequest(context) {
   const path = Array.isArray(context.params.path) ? context.params.path.join('/') : (context.params.path || '');
   const method = context.request.method;
@@ -98,6 +114,58 @@ export async function onRequest(context) {
       FROM activity_events LEFT JOIN users ON users.id = activity_events.user_id
       ORDER BY activity_events.created_at DESC LIMIT 500`).all();
     return json({ activities: result.results });
+  }
+  if (method === 'GET' && path === 'restaurant-sync') {
+    const [runsResponse, manifest, validation, refresh] = await Promise.all([
+      github(context, '/actions/workflows/restaurant-data-validation.yml/runs?per_page=5'),
+      remoteJson('https://product1-84t.pages.dev/data/restaurants/regions.json'),
+      remoteJson('https://product1-84t.pages.dev/data/restaurants/validation-report.json'),
+      remoteJson('https://product1-84t.pages.dev/data/restaurants/refresh-report.json')
+    ]);
+    const runs = runsResponse.ok ? (await runsResponse.json()).workflow_runs || [] : [];
+    return json({
+      schedule: { enabled: true, cron: '0 15 * * *', label: '매일 00:00 (한국시간)' },
+      canRun: Boolean(context.env.GITHUB_ACTIONS_TOKEN),
+      latest: runs[0] ? {
+        id: runs[0].id,
+        status: runs[0].status,
+        conclusion: runs[0].conclusion,
+        event: runs[0].event,
+        startedAt: runs[0].run_started_at,
+        updatedAt: runs[0].updated_at,
+        url: runs[0].html_url
+      } : null,
+      recent: runs.slice(0, 5).map(run => ({
+        id: run.id,
+        status: run.status,
+        conclusion: run.conclusion,
+        event: run.event,
+        startedAt: run.run_started_at,
+        url: run.html_url
+      })),
+      manifest,
+      validation,
+      refresh
+    });
+  }
+  if (method === 'POST' && path === 'restaurant-sync/run') {
+    if (!context.env.GITHUB_ACTIONS_TOKEN) return json({ error: 'GitHub 실행 토큰이 설정되지 않았습니다.' }, 503);
+    const runsResponse = await github(context, '/actions/workflows/restaurant-data-validation.yml/runs?per_page=1');
+    const runs = runsResponse.ok ? (await runsResponse.json()).workflow_runs || [] : [];
+    if (runs[0] && ['queued', 'in_progress', 'waiting', 'pending'].includes(runs[0].status)) {
+      return json({ error: '식당 데이터 갱신이 이미 실행 중입니다.' }, 409);
+    }
+    const response = await github(context, '/actions/workflows/restaurant-data-validation.yml/dispatches', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ref: 'main' })
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      return json({ error: error.message || 'GitHub 갱신 작업을 시작하지 못했습니다.' }, response.status);
+    }
+    await audit(context, '식당 데이터 수동 갱신', 'GitHub Actions workflow_dispatch');
+    return json({ ok: true }, 202);
   }
   return json({ error: 'Not found' }, 404);
 }

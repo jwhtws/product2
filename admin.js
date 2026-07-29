@@ -101,11 +101,44 @@
     }));
   }
 
-  function renderRestaurants() {
-    const validation = validationReport?.stats || {};
+  async function renderRestaurants() {
+    loading();
+    const sync = await api('restaurant-sync');
+    const validation = sync.validation?.stats || validationReport?.stats || {};
+    const manifest = sync.manifest || restaurantMeta;
+    const refresh = sync.refresh;
+    const latest = sync.latest;
+    const running = latest && ['queued', 'in_progress', 'waiting', 'pending'].includes(latest.status);
+    const succeeded = latest?.conclusion === 'success';
+    const resultLabel = running ? '실행 중' : succeeded ? '성공' : latest?.conclusion ? '실패' : '기록 없음';
     $('#admin-content').innerHTML = `${heading('DATA', '식당 데이터', '공공데이터와 검색 인덱스 상태입니다.')}
-      <div class="metrics"><article class="metric"><span>영업 중 식당</span><strong>${restaurantMeta.total.toLocaleString('ko-KR')}</strong><small>공식 인허가 기준</small></article><article class="metric"><span>시작일 검증</span><strong>${(validation.verifiedPermitDateRows || 0).toLocaleString('ko-KR')}</strong><small>검증 통과</small></article><article class="metric"><span>시작일 누락</span><strong>${(validation.missingPermitDateRows || 0).toLocaleString('ko-KR')}</strong><small>원본 데이터 기준</small></article><article class="metric"><span>검증 결과</span><strong>${validationReport?.ok === false ? '확인 필요' : '정상'}</strong><small>D1과 별도 정적 데이터</small></article></div>
-      <article class="panel"><h2>지역별 식당 현황</h2><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${restaurantMeta.regions.map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
+      <div class="metrics"><article class="metric"><span>영업 중 식당</span><strong>${(manifest.total || 0).toLocaleString('ko-KR')}</strong><small>공식 인허가 기준</small></article><article class="metric"><span>최근 개업 반영</span><strong>${refresh ? refresh.opened.toLocaleString('ko-KR') : '—'}</strong><small>${refresh?.updatedAt ? new Date(refresh.updatedAt).toLocaleDateString('ko-KR') : '결과 보고서 연결 대기'}</small></article><article class="metric"><span>최근 폐업·제외</span><strong>${refresh ? refresh.closed.toLocaleString('ko-KR') : '—'}</strong><small>${refresh ? '공식 데이터 비교' : '결과 보고서 연결 대기'}</small></article><article class="metric"><span>자동 갱신</span><strong>${resultLabel}</strong><small>${sync.schedule.label}</small></article></div>
+      <div class="dashboard-grid">
+        <article class="panel"><h2>갱신 작업</h2><div class="health-list">
+          <div class="health-item"><span>자동 실행</span><b class="status">사용 중</b></div>
+          <div class="health-item"><span>최근 실행</span><b>${latest?.startedAt ? new Date(latest.startedAt).toLocaleString('ko-KR') : '기록 없음'}</b></div>
+          <div class="health-item"><span>최근 결과</span><b class="status ${succeeded || running ? '' : 'warn'}">${resultLabel}</b></div>
+          <div class="health-item"><span>데이터 갱신</span><b>${manifest.updatedAt ? new Date(manifest.updatedAt).toLocaleString('ko-KR') : '확인 중'}</b></div>
+        </div><div class="sync-actions">${sync.canRun ? `<button id="run-restaurant-sync" class="small-button" ${running ? 'disabled' : ''}>${running ? '갱신 실행 중' : '지금 갱신 실행'}</button>` : '<a class="small-button sync-link" href="https://github.com/jwhtws/product1/actions/workflows/restaurant-data-validation.yml" target="_blank" rel="noreferrer">GitHub에서 수동 실행 ↗</a>'}${latest?.url ? `<a href="${escapeHtml(latest.url)}" target="_blank" rel="noreferrer">실행 로그 보기 ↗</a>` : ''}</div></article>
+        <article class="panel"><h2>데이터 검증</h2><div class="health-list">
+          <div class="health-item"><span>검증 결과</span><b class="status ${sync.validation?.ok === false ? 'warn' : ''}">${sync.validation?.ok === false ? '확인 필요' : '정상'}</b></div>
+          <div class="health-item"><span>시작일 검증</span><b>${(validation.verifiedPermitDateRows || 0).toLocaleString('ko-KR')}건</b></div>
+          <div class="health-item"><span>시작일 누락</span><b>${(validation.missingPermitDateRows || 0).toLocaleString('ko-KR')}건</b></div>
+        </div></article>
+      </div>
+      <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${(manifest.regions || []).map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
+    $('#run-restaurant-sync')?.addEventListener('click', async event => {
+      if (!confirm('공식 공공데이터를 다시 받아 개업·폐업 정보를 지금 갱신할까요?')) return;
+      event.currentTarget.disabled = true;
+      try {
+        await api('restaurant-sync/run', { method: 'POST' });
+        toast('식당 데이터 갱신을 시작했습니다.');
+        setTimeout(renderRestaurants, 2500);
+      } catch (error) {
+        toast(error.message);
+        event.currentTarget.disabled = false;
+      }
+    });
   }
 
   async function renderLogs() {
