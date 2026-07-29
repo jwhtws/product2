@@ -18,6 +18,11 @@ const timingSafeEqual = (left, right) => {
   return mismatch === 0;
 };
 
+export async function safeEqualText(left, right) {
+  const values = await Promise.all([left, right].map(value => crypto.subtle.digest('SHA-256', encoder.encode(String(value || '')))));
+  return timingSafeEqual(new Uint8Array(values[0]), new Uint8Array(values[1]));
+}
+
 async function hmac(secret, value) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(value)));

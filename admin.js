@@ -28,6 +28,13 @@
 
   const heading = (overline, title, description, toolbar = '') =>
     `<div class="page-head"><div><p class="overline">${overline}</p><h1>${title}</h1></div><div><p>${description}</p>${toolbar}</div></div>`;
+  const listPath = (path, query = '', cursor = null) => {
+    const params = new URLSearchParams({ limit: '50' });
+    if (query) params.set('q', query);
+    if (cursor) params.set('cursor', cursor);
+    return `${path}?${params}`;
+  };
+  const nextPage = page => page?.hasMore ? `<div class="pagination"><button class="small-button" data-next-cursor="${page.nextCursor}">다음 50개</button></div>` : '';
 
   function loading() {
     $('#admin-content').innerHTML = '<div class="empty-admin">서버 데이터를 불러오는 중입니다.</div>';
@@ -57,15 +64,16 @@
       </div>`;
   }
 
-  async function renderMembers(query = '') {
+  async function renderMembers(query = '', cursor = null) {
     loading();
-    const data = await api('members');
-    const rows = data.members.filter(item => `${item.name} ${item.email}`.toLowerCase().includes(query.toLowerCase()));
+    const data = await api(listPath('members', query, cursor));
+    const rows = data.members;
     $('#admin-content').innerHTML = `${heading('USERS', '회원 관리', '서버에 가입한 회원 상태와 권한을 관리합니다.', `<div class="toolbar"><input id="member-search" value="${escapeHtml(query)}" placeholder="회원 검색"></div>`)}
       <div class="table-wrap">${rows.length ? `<table><thead><tr><th>회원</th><th>이메일</th><th>상태</th><th>권한</th><th>가입일</th><th>관리</th></tr></thead><tbody>${rows.map(item =>
         `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.email)}</td><td><span class="status ${item.status === 'active' ? '' : 'warn'}">${item.status === 'active' ? '활성' : '정지'}</span></td><td>${item.role === 'admin' ? '관리자' : '일반 회원'}</td><td>${new Date(item.created_at).toLocaleDateString('ko-KR')}</td><td><div class="row-actions"><button class="small-button" data-member-status="${item.id}" data-status="${item.status}">${item.status === 'active' ? '정지' : '활성화'}</button><button class="small-button" data-member-role="${item.id}" data-role="${item.role}">권한 변경</button><button class="small-button danger" data-member-delete="${item.id}">삭제</button></div></td></tr>`
-      ).join('')}</tbody></table>` : '<div class="empty-admin">표시할 회원이 없습니다.</div>'}</div>`;
+      ).join('')}</tbody></table>` : '<div class="empty-admin">표시할 회원이 없습니다.</div>'}</div>${nextPage(data.page)}`;
     $('#member-search').addEventListener('change', event => renderMembers(event.target.value));
+    $('[data-next-cursor]')?.addEventListener('click', event => renderMembers(query, event.currentTarget.dataset.nextCursor));
     $$('[data-member-status]').forEach(button => button.addEventListener('click', async () => {
       await api(`members/${button.dataset.memberStatus}`, { method: 'PATCH', body: JSON.stringify({ status: button.dataset.status === 'active' ? 'suspended' : 'active' }) });
       toast('회원 상태를 변경했습니다.'); renderMembers(query);
@@ -81,15 +89,16 @@
     }));
   }
 
-  async function renderReviews(query = '') {
+  async function renderReviews(query = '', cursor = null) {
     loading();
-    const data = await api('reviews');
-    const rows = data.reviews.filter(item => `${item.author} ${item.restaurant_name} ${item.text}`.toLowerCase().includes(query.toLowerCase()));
+    const data = await api(listPath('reviews', query, cursor));
+    const rows = data.reviews;
     $('#admin-content').innerHTML = `${heading('MODERATION', '리뷰 관리', '서버에 등록된 리뷰를 검토하고 관리합니다.', `<div class="toolbar"><input id="review-search" value="${escapeHtml(query)}" placeholder="리뷰 검색"></div>`)}
       <div class="table-wrap">${rows.length ? `<table><thead><tr><th>작성자</th><th>식당</th><th>별점</th><th>내용</th><th>상태</th><th>작성일</th><th>관리</th></tr></thead><tbody>${rows.map(item =>
         `<tr><td>${escapeHtml(item.author)}</td><td>${escapeHtml(item.restaurant_name)}</td><td>${'★'.repeat(item.rating)}</td><td class="review-text">${escapeHtml(item.text)}</td><td><span class="status ${item.hidden ? 'warn' : ''}">${item.hidden ? '숨김' : '공개'}</span></td><td>${new Date(item.created_at).toLocaleDateString('ko-KR')}</td><td><div class="row-actions"><button class="small-button" data-review-hide="${item.id}" data-hidden="${item.hidden}">${item.hidden ? '공개' : '숨김'}</button><button class="small-button danger" data-review-delete="${item.id}">삭제</button></div></td></tr>`
-      ).join('')}</tbody></table>` : '<div class="empty-admin">등록된 리뷰가 없습니다.</div>'}</div>`;
+      ).join('')}</tbody></table>` : '<div class="empty-admin">등록된 리뷰가 없습니다.</div>'}</div>${nextPage(data.page)}`;
     $('#review-search').addEventListener('change', event => renderReviews(event.target.value));
+    $('[data-next-cursor]')?.addEventListener('click', event => renderReviews(query, event.currentTarget.dataset.nextCursor));
     $$('[data-review-hide]').forEach(button => button.addEventListener('click', async () => {
       await api(`reviews/${button.dataset.reviewHide}`, { method: 'PATCH', body: JSON.stringify({ hidden: button.dataset.hidden === '0' }) });
       toast('리뷰 상태를 변경했습니다.'); renderReviews(query);
@@ -128,12 +137,9 @@
         </div></article>
       </div>
       <article class="panel restaurant-history"><h2>일자별 개업·폐업 변경 이력 <small>최근 90일</small></h2>
-        ${history.length ? `<div class="history-list">${history.map(entry => `<details>
+        ${history.length ? `<div class="history-list">${history.map(entry => `<details data-history-date="${escapeHtml(entry.date)}">
           <summary><strong>${escapeHtml(entry.date)}</strong><span class="history-added">추가 ${entry.addedCount.toLocaleString('ko-KR')}곳</span><span class="history-removed">제거 ${entry.removedCount.toLocaleString('ko-KR')}곳</span><span>영업 중 ${entry.total.toLocaleString('ko-KR')}곳</span></summary>
-          <div class="history-columns">
-            <section><h3>추가된 식당</h3>${entry.added.length ? `<div class="table-wrap"><table><thead><tr><th>식당</th><th>주소</th><th>업종</th><th>인허가일</th></tr></thead><tbody>${entry.added.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.address)}</td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.permitDate)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-admin">추가된 식당이 없습니다.</div>'}</section>
-            <section><h3>제거된 식당</h3>${entry.removed.length ? `<div class="table-wrap"><table><thead><tr><th>식당</th><th>주소</th><th>업종</th><th>기존 인허가일</th></tr></thead><tbody>${entry.removed.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.address)}</td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.permitDate)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-admin">제거된 식당이 없습니다.</div>'}</section>
-          </div>
+          <div class="history-detail empty-admin">펼치면 상세 목록을 불러옵니다.</div>
         </details>`).join('')}</div>` : '<div class="empty-admin">현재 데이터를 기준으로 설정했습니다. 다음 일일 갱신부터 추가·제거된 식당이 날짜별로 기록됩니다.</div>'}
       </article>
       <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${(manifest.regions || []).map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
@@ -149,17 +155,34 @@
         event.currentTarget.disabled = false;
       }
     });
+    $$('[data-history-date]').forEach(details => details.addEventListener('toggle', async () => {
+      if (!details.open || details.dataset.loaded) return;
+      details.dataset.loaded = 'true';
+      const target = details.querySelector('.history-detail');
+      try {
+        const data = await api(`restaurant-sync/history/${encodeURIComponent(details.dataset.historyDate)}`);
+        const entry = data.entry;
+        target.className = 'history-columns';
+        target.innerHTML = [
+          ['추가된 식당', entry.added, '인허가일'],
+          ['제거된 식당', entry.removed, '기존 인허가일']
+        ].map(([title, rows, dateLabel]) => `<section><h3>${title}</h3>${rows.length ? `<div class="table-wrap"><table><thead><tr><th>식당</th><th>주소</th><th>업종</th><th>${dateLabel}</th></tr></thead><tbody>${rows.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.address)}</td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.permitDate)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-admin">해당 식당이 없습니다.</div>'}</section>`).join('');
+      } catch (error) {
+        target.textContent = error.message;
+      }
+    }));
   }
 
-  async function renderLogs() {
+  async function renderLogs(cursor = null) {
     loading();
-    const data = await api('logs');
-    $('#admin-content').innerHTML = `${heading('AUDIT', '운영 로그', '서버에 기록된 관리자 작업입니다.')}<article class="panel"><div class="log-list">${data.logs.length ? data.logs.map(log => `<div class="log"><time>${new Date(log.created_at).toLocaleString('ko-KR')}</time><strong>${escapeHtml(log.action)}</strong><span>${escapeHtml(log.detail)}</span></div>`).join('') : '<div class="empty-admin">아직 관리 작업 기록이 없습니다.</div>'}</div></article>`;
+    const data = await api(listPath('logs', '', cursor));
+    $('#admin-content').innerHTML = `${heading('AUDIT', '운영 로그', '서버에 기록된 관리자 작업입니다.')}<article class="panel"><div class="log-list">${data.logs.length ? data.logs.map(log => `<div class="log"><time>${new Date(log.created_at).toLocaleString('ko-KR')}</time><strong>${escapeHtml(log.action)}</strong><span>${escapeHtml(log.detail)}</span></div>`).join('') : '<div class="empty-admin">아직 관리 작업 기록이 없습니다.</div>'}</div></article>${nextPage(data.page)}`;
+    $('[data-next-cursor]')?.addEventListener('click', event => renderLogs(event.currentTarget.dataset.nextCursor));
   }
 
-  async function renderUserData() {
+  async function renderUserData(query = '', cursor = null) {
     loading();
-    const data = await api('user-data');
+    const data = await api(listPath('user-data', query, cursor));
     const grouped = new Map();
     data.rows.forEach(item => {
       const user = grouped.get(item.user_id) || { name: item.name, email: item.email, profile: {}, saved: [], lists: {}, updatedAt: 0 };
@@ -168,20 +191,23 @@
       grouped.set(item.user_id, user);
     });
     const rows = [...grouped.values()];
-    $('#admin-content').innerHTML = `${heading('ACCOUNT DATA', '사용자 데이터', '프로필, 저장 맛집과 사용자 리스트를 확인합니다.')}
+    $('#admin-content').innerHTML = `${heading('ACCOUNT DATA', '사용자 데이터', '프로필, 저장 맛집과 사용자 리스트를 확인합니다.', `<div class="toolbar"><input id="userdata-search" value="${escapeHtml(query)}" placeholder="회원 검색"></div>`)}
       <div class="table-wrap">${rows.length ? `<table><thead><tr><th>회원</th><th>프로필</th><th>저장 맛집</th><th>사용자 리스트</th><th>최근 변경</th></tr></thead><tbody>${rows.map(item =>
         `<tr><td><strong>${escapeHtml(item.profile?.name || item.name)}</strong><br><small>${escapeHtml(item.email)}</small></td><td>${escapeHtml(item.profile?.favorite || '선호 음식 없음')}<br><small>${escapeHtml(item.profile?.bio || '소개 없음')}</small></td><td><strong>${(item.saved || []).length.toLocaleString('ko-KR')}개</strong></td><td>${Object.entries(item.lists || {}).map(([name, values]) => `${escapeHtml(name)} (${values.length})`).join('<br>') || '없음'}</td><td>${new Date(item.updatedAt).toLocaleString('ko-KR')}</td></tr>`
-      ).join('')}</tbody></table>` : '<div class="empty-admin">서버에 저장된 사용자 데이터가 없습니다.</div>'}</div>`;
+      ).join('')}</tbody></table>` : '<div class="empty-admin">서버에 저장된 사용자 데이터가 없습니다.</div>'}</div>${nextPage(data.page)}`;
+    $('#userdata-search').addEventListener('change', event => renderUserData(event.target.value));
+    $('[data-next-cursor]')?.addEventListener('click', event => renderUserData(query, event.currentTarget.dataset.nextCursor));
   }
 
-  async function renderActivities() {
+  async function renderActivities(cursor = null) {
     loading();
-    const data = await api('activities');
+    const data = await api(listPath('activities', '', cursor));
     const labels = { search: '검색', save: '맛집 저장', list: '리스트' };
     $('#admin-content').innerHTML = `${heading('ACTIVITY', '검색·저장 활동', 'product1에서 발생한 사용자 활동을 최신순으로 확인합니다.')}
       <article class="panel"><div class="log-list">${data.activities.length ? data.activities.map(item =>
         `<div class="log"><time>${new Date(item.created_at).toLocaleString('ko-KR')}</time><strong>${escapeHtml(labels[item.event_type] || item.event_type)}</strong><span>${escapeHtml(item.detail)} · ${escapeHtml(item.name || '비회원')}</span></div>`
-      ).join('') : '<div class="empty-admin">아직 기록된 사용자 활동이 없습니다.</div>'}</div></article>`;
+      ).join('') : '<div class="empty-admin">아직 기록된 사용자 활동이 없습니다.</div>'}</div></article>${nextPage(data.page)}`;
+    $('[data-next-cursor]')?.addEventListener('click', event => renderActivities(event.currentTarget.dataset.nextCursor));
   }
 
   async function render(view = currentView) {
