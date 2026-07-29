@@ -1,4 +1,4 @@
-import { body, clearCookie, createSession, json, requireAdmin, sessionCookie } from '../../_lib/auth.js';
+import { body, clearCookie, clearFailures, createSession, json, rateLimit, recordFailure, requireAdmin, sessionCookie } from '../../_lib/auth.js';
 
 async function audit(context, action, detail) {
   await context.env.DB.prepare('INSERT INTO admin_logs (action, detail, created_at) VALUES (?, ?, ?)')
@@ -11,9 +11,15 @@ export async function onRequest(context) {
 
   if (method === 'POST' && path === 'login') {
     const data = await body(context.request);
+    const client = context.request.headers.get('cf-connecting-ip') || 'unknown';
+    const attemptKey = `admin-login:${client}`;
+    const limit = await rateLimit(context.env, attemptKey, 8);
+    if (!limit.allowed) return json({ error: '관리자 로그인 시도가 너무 많습니다. 15분 후 다시 시도해 주세요.', code: 'RATE_LIMITED' }, 429);
     if (!context.env.ADMIN_PASSWORD || String(data.code || '') !== context.env.ADMIN_PASSWORD) {
+      await recordFailure(context.env, attemptKey);
       return json({ error: '관리자 코드가 올바르지 않습니다.' }, 401);
     }
+    await clearFailures(context.env, attemptKey);
     const token = await createSession(context.env.SESSION_SECRET, { admin: true }, 60 * 60 * 12);
     await audit(context, '관리자 로그인', 'Cloudflare 관리 콘솔');
     return json({ ok: true }, 200, { 'set-cookie': sessionCookie('mukdang_admin', token, 60 * 60 * 12) });

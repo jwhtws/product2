@@ -85,3 +85,26 @@ export async function currentUser(context) {
 export async function requireAdmin(context) {
   return readSession(context.env.SESSION_SECRET, cookie(context.request, 'mukdang_admin'));
 }
+
+export async function rateLimit(env, key, limit = 10, windowMs = 15 * 60 * 1000) {
+  const now = Date.now();
+  const record = await env.DB.prepare('SELECT failure_count, window_started FROM auth_attempts WHERE attempt_key = ?')
+    .bind(key).first();
+  if (!record || now - record.window_started > windowMs) return { allowed: true, remaining: limit };
+  return { allowed: record.failure_count < limit, remaining: Math.max(0, limit - record.failure_count) };
+}
+
+export async function recordFailure(env, key, windowMs = 15 * 60 * 1000) {
+  const now = Date.now();
+  const record = await env.DB.prepare('SELECT failure_count, window_started FROM auth_attempts WHERE attempt_key = ?')
+    .bind(key).first();
+  const expired = !record || now - record.window_started > windowMs;
+  await env.DB.prepare(`INSERT INTO auth_attempts (attempt_key, failure_count, window_started)
+    VALUES (?, ?, ?) ON CONFLICT(attempt_key) DO UPDATE SET
+    failure_count = excluded.failure_count, window_started = excluded.window_started`)
+    .bind(key, expired ? 1 : record.failure_count + 1, expired ? now : record.window_started).run();
+}
+
+export async function clearFailures(env, key) {
+  await env.DB.prepare('DELETE FROM auth_attempts WHERE attempt_key = ?').bind(key).run();
+}
