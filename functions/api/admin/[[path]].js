@@ -17,8 +17,13 @@ async function github(context, path, options = {}) {
 }
 
 async function remoteJson(url) {
-  const response = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
-  return response.ok ? response.json() : null;
+  try {
+    const response = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
+    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function onRequest(context) {
