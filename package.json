@@ -1,6 +1,7 @@
 {
   "name": "mukdang-product2-admin",
   "private": true,
+  "type": "module",
   "scripts": {
     "check": "node scripts/validate-project.mjs && node --test"
   }
