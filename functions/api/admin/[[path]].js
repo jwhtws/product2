@@ -26,12 +26,14 @@ export async function onRequest(context) {
   if (method === 'GET' && path === 'session') return json({ authenticated: true });
 
   if (method === 'GET' && path === 'dashboard') {
-    const [members, reviews, recent] = await context.env.DB.batch([
+    const [members, reviews, recent, saved, activities] = await context.env.DB.batch([
       context.env.DB.prepare('SELECT COUNT(*) AS count FROM users'),
       context.env.DB.prepare('SELECT COUNT(*) AS count FROM reviews'),
-      context.env.DB.prepare('SELECT COUNT(*) AS count FROM reviews WHERE created_at >= ?').bind(Date.now() - 7 * 86400000)
+      context.env.DB.prepare('SELECT COUNT(*) AS count FROM reviews WHERE created_at >= ?').bind(Date.now() - 7 * 86400000),
+      context.env.DB.prepare("SELECT COUNT(*) AS count FROM user_data WHERE data_key = 'saved'"),
+      context.env.DB.prepare('SELECT COUNT(*) AS count FROM activity_events WHERE created_at >= ?').bind(Date.now() - 86400000)
     ]);
-    return json({ members: members.results[0].count, reviews: reviews.results[0].count, recentReviews: recent.results[0].count });
+    return json({ members: members.results[0].count, reviews: reviews.results[0].count, recentReviews: recent.results[0].count, savedUsers: saved.results[0].count, dailyActivities: activities.results[0].count });
   }
   if (method === 'GET' && path === 'members') {
     const result = await context.env.DB.prepare('SELECT id, email, name, role, status, created_at FROM users ORDER BY created_at DESC LIMIT 500').all();
@@ -74,6 +76,22 @@ export async function onRequest(context) {
   if (method === 'GET' && path === 'logs') {
     const result = await context.env.DB.prepare('SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 200').all();
     return json({ logs: result.results });
+  }
+  if (method === 'GET' && path === 'user-data') {
+    const result = await context.env.DB.prepare(`SELECT user_data.user_id, user_data.data_key, user_data.data_value,
+      user_data.updated_at, users.email, users.name FROM user_data JOIN users ON users.id = user_data.user_id
+      ORDER BY user_data.updated_at DESC LIMIT 1000`).all();
+    return json({ rows: result.results.map(item => {
+      let value = null;
+      try { value = JSON.parse(item.data_value); } catch {}
+      return { ...item, data_value: undefined, value };
+    }) });
+  }
+  if (method === 'GET' && path === 'activities') {
+    const result = await context.env.DB.prepare(`SELECT activity_events.*, users.email, users.name
+      FROM activity_events LEFT JOIN users ON users.id = activity_events.user_id
+      ORDER BY activity_events.created_at DESC LIMIT 500`).all();
+    return json({ activities: result.results });
   }
   return json({ error: 'Not found' }, 404);
 }

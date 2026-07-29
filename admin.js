@@ -40,7 +40,7 @@
       <div class="metrics">
         <article class="metric"><span>전체 회원</span><strong>${data.members.toLocaleString('ko-KR')}</strong><small>D1 계정 기준</small></article>
         <article class="metric"><span>등록 리뷰</span><strong>${data.reviews.toLocaleString('ko-KR')}</strong><small>최근 7일 +${data.recentReviews}</small></article>
-        <article class="metric"><span>관리자 인증</span><strong>정상</strong><small>서버 세션 보호</small></article>
+        <article class="metric"><span>오늘 활동</span><strong>${data.dailyActivities.toLocaleString('ko-KR')}</strong><small>검색·저장·리스트</small></article>
         <article class="metric"><span>식당 데이터</span><strong>${restaurantMeta.total.toLocaleString('ko-KR')}</strong><small>${restaurantMeta.regions.length}개 지역</small></article>
       </div>
       <div class="dashboard-grid">
@@ -48,6 +48,7 @@
           <div class="health-item"><span>Cloudflare Pages Functions</span><b class="status">정상</b></div>
           <div class="health-item"><span>D1 데이터베이스</span><b class="status">정상</b></div>
           <div class="health-item"><span>관리자 쿠키</span><b class="status">보호됨</b></div>
+          <div class="health-item"><span>저장 데이터 회원</span><b>${data.savedUsers.toLocaleString('ko-KR')}명</b></div>
         </div></article>
         <article class="panel"><h2>데이터 상태</h2><div class="health-list">
           <div class="health-item"><span>식당 원본 데이터</span><b class="status">정상</b></div>
@@ -113,12 +114,39 @@
     $('#admin-content').innerHTML = `${heading('AUDIT', '운영 로그', '서버에 기록된 관리자 작업입니다.')}<article class="panel"><div class="log-list">${data.logs.length ? data.logs.map(log => `<div class="log"><time>${new Date(log.created_at).toLocaleString('ko-KR')}</time><strong>${escapeHtml(log.action)}</strong><span>${escapeHtml(log.detail)}</span></div>`).join('') : '<div class="empty-admin">아직 관리 작업 기록이 없습니다.</div>'}</div></article>`;
   }
 
+  async function renderUserData() {
+    loading();
+    const data = await api('user-data');
+    const grouped = new Map();
+    data.rows.forEach(item => {
+      const user = grouped.get(item.user_id) || { name: item.name, email: item.email, profile: {}, saved: [], lists: {}, updatedAt: 0 };
+      user[item.data_key] = item.value;
+      user.updatedAt = Math.max(user.updatedAt, item.updated_at);
+      grouped.set(item.user_id, user);
+    });
+    const rows = [...grouped.values()];
+    $('#admin-content').innerHTML = `${heading('ACCOUNT DATA', '사용자 데이터', '프로필, 저장 맛집과 사용자 리스트를 확인합니다.')}
+      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>회원</th><th>프로필</th><th>저장 맛집</th><th>사용자 리스트</th><th>최근 변경</th></tr></thead><tbody>${rows.map(item =>
+        `<tr><td><strong>${escapeHtml(item.profile?.name || item.name)}</strong><br><small>${escapeHtml(item.email)}</small></td><td>${escapeHtml(item.profile?.favorite || '선호 음식 없음')}<br><small>${escapeHtml(item.profile?.bio || '소개 없음')}</small></td><td><strong>${(item.saved || []).length.toLocaleString('ko-KR')}개</strong></td><td>${Object.entries(item.lists || {}).map(([name, values]) => `${escapeHtml(name)} (${values.length})`).join('<br>') || '없음'}</td><td>${new Date(item.updatedAt).toLocaleString('ko-KR')}</td></tr>`
+      ).join('')}</tbody></table>` : '<div class="empty-admin">서버에 저장된 사용자 데이터가 없습니다.</div>'}</div>`;
+  }
+
+  async function renderActivities() {
+    loading();
+    const data = await api('activities');
+    const labels = { search: '검색', save: '맛집 저장', list: '리스트' };
+    $('#admin-content').innerHTML = `${heading('ACTIVITY', '검색·저장 활동', 'product1에서 발생한 사용자 활동을 최신순으로 확인합니다.')}
+      <article class="panel"><div class="log-list">${data.activities.length ? data.activities.map(item =>
+        `<div class="log"><time>${new Date(item.created_at).toLocaleString('ko-KR')}</time><strong>${escapeHtml(labels[item.event_type] || item.event_type)}</strong><span>${escapeHtml(item.detail)} · ${escapeHtml(item.name || '비회원')}</span></div>`
+      ).join('') : '<div class="empty-admin">아직 기록된 사용자 활동이 없습니다.</div>'}</div></article>`;
+  }
+
   async function render(view = currentView) {
     currentView = view;
     $$('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, members: renderMembers, reviews: renderReviews, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;
