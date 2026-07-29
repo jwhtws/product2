@@ -64,7 +64,7 @@ const ANALYTICS_PERIODS = {
 function analyticsBuckets(period) {
   const config = ANALYTICS_PERIODS[period];
   const buckets = [];
-  const now = new Date();
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
   for (let offset = config.amount - 1; offset >= 0; offset -= 1) {
     const date = new Date(now);
     if (config.unit === 'day') date.setUTCDate(date.getUTCDate() - offset);
