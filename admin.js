@@ -187,5 +187,6 @@
     fetch('https://product1-84t.pages.dev/data/restaurants/validation-report.json?v=20260729-1').then(response => response.ok ? response.json() : null)
   ]).then(([data, report]) => { restaurantMeta = data; validationReport = report; }).catch(() => {});
 
-  api('session').then(enterAdmin).catch(showLogin);
+  // 관리자 링크를 열거나 새로고침할 때마다 코드를 다시 확인한다.
+  api('logout').catch(() => {}).finally(showLogin);
 })();
