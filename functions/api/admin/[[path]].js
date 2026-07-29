@@ -19,8 +19,10 @@ async function github(context, path, options = {}) {
 async function remoteJson(url) {
   try {
     const response = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
-    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return null;
-    return await response.json();
+    if (!response.ok) return null;
+    const text = await response.text();
+    if (!['{', '['].includes(text.trimStart()[0])) return null;
+    return JSON.parse(text);
   } catch {
     return null;
   }
