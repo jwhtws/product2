@@ -108,6 +108,7 @@
     const manifest = sync.manifest || restaurantMeta;
     const refresh = sync.refresh;
     const latest = sync.latest;
+    const history = sync.history?.entries || [];
     const running = latest && ['queued', 'in_progress', 'waiting', 'pending'].includes(latest.status);
     const succeeded = latest?.conclusion === 'success';
     const resultLabel = running ? '실행 중' : succeeded ? '성공' : latest?.conclusion ? '실패' : '기록 없음';
@@ -126,6 +127,15 @@
           <div class="health-item"><span>시작일 누락</span><b>${(validation.missingPermitDateRows || 0).toLocaleString('ko-KR')}건</b></div>
         </div></article>
       </div>
+      <article class="panel restaurant-history"><h2>일자별 개업·폐업 변경 이력 <small>최근 90일</small></h2>
+        ${history.length ? `<div class="history-list">${history.map(entry => `<details>
+          <summary><strong>${escapeHtml(entry.date)}</strong><span class="history-added">추가 ${entry.addedCount.toLocaleString('ko-KR')}곳</span><span class="history-removed">제거 ${entry.removedCount.toLocaleString('ko-KR')}곳</span><span>영업 중 ${entry.total.toLocaleString('ko-KR')}곳</span></summary>
+          <div class="history-columns">
+            <section><h3>추가된 식당</h3>${entry.added.length ? `<div class="table-wrap"><table><thead><tr><th>식당</th><th>주소</th><th>업종</th><th>인허가일</th></tr></thead><tbody>${entry.added.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.address)}</td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.permitDate)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-admin">추가된 식당이 없습니다.</div>'}</section>
+            <section><h3>제거된 식당</h3>${entry.removed.length ? `<div class="table-wrap"><table><thead><tr><th>식당</th><th>주소</th><th>업종</th><th>기존 인허가일</th></tr></thead><tbody>${entry.removed.map(item => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.address)}</td><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.permitDate)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-admin">제거된 식당이 없습니다.</div>'}</section>
+          </div>
+        </details>`).join('')}</div>` : '<div class="empty-admin">현재 데이터를 기준으로 설정했습니다. 다음 일일 갱신부터 추가·제거된 식당이 날짜별로 기록됩니다.</div>'}
+      </article>
       <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${(manifest.regions || []).map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
     $('#run-restaurant-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 공공데이터를 다시 받아 개업·폐업 정보를 지금 갱신할까요?')) return;

@@ -121,11 +121,12 @@ export async function onRequest(context) {
     return json({ activities: result.results });
   }
   if (method === 'GET' && path === 'restaurant-sync') {
-    const [runsResponse, manifest, validation, refresh] = await Promise.all([
+    const [runsResponse, manifest, validation, refresh, history] = await Promise.all([
       github(context, '/actions/workflows/restaurant-data-validation.yml/runs?per_page=5'),
       remoteJson('https://product1-84t.pages.dev/data/restaurants/regions.json'),
       remoteJson('https://product1-84t.pages.dev/data/restaurants/validation-report.json'),
-      remoteJson('https://product1-84t.pages.dev/data/restaurants/refresh-report.json')
+      remoteJson('https://product1-84t.pages.dev/data/restaurants/refresh-report.json'),
+      remoteJson('https://raw.githubusercontent.com/jwhtws/product2/main/data/restaurant-change-history.json')
     ]);
     const runs = runsResponse.ok ? (await runsResponse.json()).workflow_runs || [] : [];
     return json({
@@ -150,7 +151,8 @@ export async function onRequest(context) {
       })),
       manifest,
       validation,
-      refresh
+      refresh,
+      history
     });
   }
   if (method === 'POST' && path === 'restaurant-sync/run') {
