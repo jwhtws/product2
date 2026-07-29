@@ -216,7 +216,14 @@ export async function onRequest(context) {
         url: run.html_url
       })),
       manifest,
-      validation,
+      validation: validation ? {
+        ok: validation.ok,
+        checkedAt: validation.checkedAt,
+        sourceUpdatedAt: validation.sourceUpdatedAt,
+        stats: validation.stats,
+        errorCount: validation.errors?.length || 0,
+        warningCount: validation.warnings?.length || 0
+      } : null,
       refresh,
       history: history ? {
         updatedAt: history.updatedAt,
