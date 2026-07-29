@@ -5,15 +5,31 @@ async function audit(context, action, detail) {
     .bind(action, detail, Date.now()).run();
 }
 
-async function github(context, path, options = {}) {
+async function githubRepository(context, repository, path, options = {}) {
   const headers = {
     accept: 'application/vnd.github+json',
     'user-agent': 'mukdang-admin',
     'x-github-api-version': '2022-11-28',
     ...(options.headers || {})
   };
-  if (context.env.GITHUB_ACTIONS_TOKEN) headers.authorization = `Bearer ${context.env.GITHUB_ACTIONS_TOKEN}`;
-  return fetch(`https://api.github.com/repos/jwhtws/product1${path}`, { ...options, headers });
+  const token = context.env.GITHUB_ACTIONS_TOKEN || context.env.GITHUB_READ_TOKEN;
+  if (token) headers.authorization = `Bearer ${token}`;
+  return fetch(`https://api.github.com/repos/${repository}${path}`, { ...options, headers });
+}
+
+const github = (context, path, options = {}) =>
+  githubRepository(context, 'jwhtws/product1', path, options);
+
+async function githubFileJson(context, repository, file) {
+  try {
+    const response = await githubRepository(context, repository, `/contents/${file}?ref=main`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    const bytes = Uint8Array.from(atob(String(data.content || '').replace(/\s/g, '')), character => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
 }
 
 async function remoteJson(url) {
@@ -128,7 +144,7 @@ export async function onRequest(context) {
       remoteJson('https://product1-84t.pages.dev/data/restaurants/regions.json'),
       remoteJson('https://product1-84t.pages.dev/data/restaurants/validation-report.json'),
       remoteJson('https://product1-84t.pages.dev/data/restaurants/refresh-report.json'),
-      remoteJson('https://raw.githubusercontent.com/jwhtws/product2/main/data/restaurant-change-history.json')
+      githubFileJson(context, 'jwhtws/product2', 'data/restaurant-change-history.json')
     ]);
     const runs = runsResponse.ok ? (await runsResponse.json()).workflow_runs || [] : [];
     return json({
