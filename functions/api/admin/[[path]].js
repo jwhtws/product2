@@ -1,5 +1,5 @@
 import { body, clearCookie, clearFailures, createSession, json, rateLimit, recordFailure, requireAdmin, safeEqualText, sessionCookie } from '../../_lib/auth.js';
-import { likePattern, listParams, page, positiveId } from '../../_lib/admin-query.js';
+import { likePattern, listParams, page, positiveId, taskRange } from '../../_lib/admin-query.js';
 
 const memoryCache = new Map();
 
@@ -242,6 +242,58 @@ export async function onRequest(context) {
         restaurantRemoved: restaurantRemoved.get(bucket) || 0
       }))
     });
+  }
+  if (method === 'GET' && path === 'tasks') {
+    const url = new URL(context.request.url);
+    const period = url.searchParams.get('period') || 'day';
+    const anchor = url.searchParams.get('anchor') || new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const range = taskRange(period, anchor);
+    if (!range) return json({ error: '올바른 조회 기간이 필요합니다.' }, 400);
+    const result = await context.env.DB.prepare(`SELECT id, title, memo, due_date, status, priority, created_at, updated_at
+      FROM admin_tasks WHERE due_date >= ? AND due_date < ?
+      ORDER BY due_date ASC, status ASC, CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, id DESC
+      LIMIT 1000`).bind(range.start, range.end).all();
+    return json({ period, anchor, range, tasks: result.results });
+  }
+  if (method === 'POST' && path === 'tasks') {
+    const data = await body(context.request);
+    const title = String(data.title || '').trim().slice(0, 100);
+    const memo = String(data.memo || '').trim().slice(0, 2000);
+    const dueDate = String(data.dueDate || '');
+    const priority = ['low', 'normal', 'high'].includes(data.priority) ? data.priority : 'normal';
+    if (!title || !taskRange('day', dueDate)) return json({ error: '제목과 올바른 날짜가 필요합니다.' }, 400);
+    const now = Date.now();
+    const result = await context.env.DB.prepare(`INSERT INTO admin_tasks
+      (title, memo, due_date, status, priority, created_at, updated_at) VALUES (?, ?, ?, 'todo', ?, ?, ?)`)
+      .bind(title, memo, dueDate, priority, now, now).run();
+    await audit(context, '해야 할 일 등록', `${dueDate}: ${title}`);
+    return json({ ok: true, id: result.meta.last_row_id }, 201);
+  }
+  if (method === 'PATCH' && path.startsWith('tasks/')) {
+    const id = positiveId(path.split('/')[1]);
+    if (!id) return json({ error: '올바른 할 일 ID가 필요합니다.' }, 400);
+    const current = await context.env.DB.prepare('SELECT * FROM admin_tasks WHERE id = ?').bind(id).first();
+    if (!current) return json({ error: '해야 할 일을 찾을 수 없습니다.' }, 404);
+    const data = await body(context.request);
+    const title = data.title == null ? current.title : String(data.title).trim().slice(0, 100);
+    const memo = data.memo == null ? current.memo : String(data.memo).trim().slice(0, 2000);
+    const dueDate = data.dueDate == null ? current.due_date : String(data.dueDate);
+    const status = data.status == null ? current.status : data.status;
+    const priority = data.priority == null ? current.priority : data.priority;
+    if (!title || !taskRange('day', dueDate) || !['todo', 'done'].includes(status) || !['low', 'normal', 'high'].includes(priority)) {
+      return json({ error: '변경할 값이 올바르지 않습니다.' }, 400);
+    }
+    await context.env.DB.prepare(`UPDATE admin_tasks SET title = ?, memo = ?, due_date = ?, status = ?,
+      priority = ?, updated_at = ? WHERE id = ?`).bind(title, memo, dueDate, status, priority, Date.now(), id).run();
+    await audit(context, '해야 할 일 변경', `항목 ${id}: ${status}`);
+    return json({ ok: true });
+  }
+  if (method === 'DELETE' && path.startsWith('tasks/')) {
+    const id = positiveId(path.split('/')[1]);
+    if (!id) return json({ error: '올바른 할 일 ID가 필요합니다.' }, 400);
+    await context.env.DB.prepare('DELETE FROM admin_tasks WHERE id = ?').bind(id).run();
+    await audit(context, '해야 할 일 삭제', `항목 ${id}`);
+    return json({ ok: true });
   }
   if (method === 'GET' && path === 'restaurant-sync') {
     const { runs, manifest, validation, refresh, history } = await cached('restaurant-sync', 60_000, async () => {

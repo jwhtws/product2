@@ -64,6 +64,66 @@
       </div>`;
   }
 
+  const todayKst = () => new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
+
+  async function renderTasks(period = 'day', anchor = null) {
+    const today = todayKst();
+    anchor ||= period === 'day' ? today : period === 'month' ? today.slice(0, 7) : today.slice(0, 4);
+    loading();
+    const data = await api(`tasks?period=${encodeURIComponent(period)}&anchor=${encodeURIComponent(anchor)}`);
+    const groups = new Map();
+    data.tasks.forEach(task => {
+      if (!groups.has(task.due_date)) groups.set(task.due_date, []);
+      groups.get(task.due_date).push(task);
+    });
+    const dueDate = period === 'day' ? anchor : period === 'month' ? `${anchor}-01` : `${anchor}-01-01`;
+    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
+      `<button class="${period === value ? 'active' : ''}" data-task-period="${value}">${label}</button>`).join('')}</div>`;
+    const anchorInput = period === 'year'
+      ? `<input id="task-anchor" type="number" min="2020" max="2100" value="${escapeHtml(anchor)}" aria-label="조회 연도">`
+      : `<input id="task-anchor" type="${period === 'day' ? 'date' : 'month'}" value="${escapeHtml(anchor)}" aria-label="조회 기간">`;
+    $('#admin-content').innerHTML = `${heading('PLANNER', '해야 할 일', '업무와 메모를 일·월·연도별로 정리합니다.', `${periodButtons}<div class="task-anchor">${anchorInput}</div>`)}
+      <article class="panel task-compose"><h2>새 할 일</h2><form id="task-form">
+        <input name="title" maxlength="100" required placeholder="해야 할 일 제목">
+        <textarea name="memo" maxlength="2000" placeholder="메모와 세부 내용을 입력하세요"></textarea>
+        <div><label>날짜<input name="dueDate" type="date" value="${escapeHtml(dueDate)}" required></label><label>우선순위<select name="priority"><option value="normal">보통</option><option value="high">높음</option><option value="low">낮음</option></select></label><button type="submit">등록</button></div>
+      </form></article>
+      <div class="task-groups">${groups.size ? [...groups].map(([date, tasks]) => `<section class="panel task-day"><h2>${escapeHtml(date)} <small>${tasks.filter(task => task.status === 'done').length}/${tasks.length} 완료</small></h2><div class="task-list">${tasks.map(task =>
+        `<article class="task-item ${task.status === 'done' ? 'done' : ''}"><button class="task-check" data-task-toggle="${task.id}" data-status="${task.status}" aria-label="완료 상태 변경">${task.status === 'done' ? '✓' : ''}</button><div><div class="task-title"><strong>${escapeHtml(task.title)}</strong><span class="priority ${task.priority}">${task.priority === 'high' ? '높음' : task.priority === 'low' ? '낮음' : '보통'}</span></div>${task.memo ? `<p>${escapeHtml(task.memo)}</p>` : ''}</div><div class="row-actions"><button class="small-button" data-task-edit="${task.id}">수정</button><button class="small-button danger" data-task-delete="${task.id}">삭제</button></div></article>`
+      ).join('')}</div></section>`).join('') : '<div class="empty-admin panel">이 기간에 등록된 할 일이 없습니다.</div>'}</div>`;
+    $$('[data-task-period]').forEach(button => button.addEventListener('click', () => renderTasks(button.dataset.taskPeriod)));
+    $('#task-anchor').addEventListener('change', event => renderTasks(period, event.target.value));
+    $('#task-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      await api('tasks', { method: 'POST', body: JSON.stringify(Object.fromEntries(form)) });
+      toast('해야 할 일을 등록했습니다.');
+      renderTasks(period, anchor);
+    });
+    $$('[data-task-toggle]').forEach(button => button.addEventListener('click', async () => {
+      await api(`tasks/${button.dataset.taskToggle}`, { method: 'PATCH', body: JSON.stringify({ status: button.dataset.status === 'done' ? 'todo' : 'done' }) });
+      renderTasks(period, anchor);
+    }));
+    $$('[data-task-edit]').forEach(button => button.addEventListener('click', async () => {
+      const item = button.closest('.task-item');
+      const title = prompt('제목을 수정하세요.', item.querySelector('strong').textContent);
+      if (title == null) return;
+      const memo = prompt('메모를 수정하세요.', item.querySelector('p')?.textContent || '');
+      if (memo == null) return;
+      await api(`tasks/${button.dataset.taskEdit}`, { method: 'PATCH', body: JSON.stringify({ title, memo }) });
+      toast('해야 할 일을 수정했습니다.');
+      renderTasks(period, anchor);
+    }));
+    $$('[data-task-delete]').forEach(button => button.addEventListener('click', async () => {
+      if (!confirm('이 해야 할 일을 삭제할까요?')) return;
+      await api(`tasks/${button.dataset.taskDelete}`, { method: 'DELETE' });
+      toast('해야 할 일을 삭제했습니다.');
+      renderTasks(period, anchor);
+    }));
+  }
+
   function lineChart(points, series) {
     const width = 900, height = 260, left = 48, right = 18, top = 22, bottom = 42;
     const chartWidth = width - left - right, chartHeight = height - top - bottom;
@@ -262,7 +322,7 @@
     $$('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, analytics: renderAnalytics, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;
