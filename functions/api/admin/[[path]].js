@@ -55,6 +55,27 @@ async function remoteJson(url) {
   }
 }
 
+const ANALYTICS_PERIODS = {
+  day: { format: '%Y-%m-%d', amount: 30, unit: 'day', label: '일별' },
+  month: { format: '%Y-%m', amount: 12, unit: 'month', label: '월별' },
+  year: { format: '%Y', amount: 5, unit: 'year', label: '연도별' }
+};
+
+function analyticsBuckets(period) {
+  const config = ANALYTICS_PERIODS[period];
+  const buckets = [];
+  const now = new Date();
+  for (let offset = config.amount - 1; offset >= 0; offset -= 1) {
+    const date = new Date(now);
+    if (config.unit === 'day') date.setUTCDate(date.getUTCDate() - offset);
+    if (config.unit === 'month') date.setUTCMonth(date.getUTCMonth() - offset, 1);
+    if (config.unit === 'year') date.setUTCFullYear(date.getUTCFullYear() - offset, 0, 1);
+    buckets.push(config.unit === 'day' ? date.toISOString().slice(0, 10) :
+      config.unit === 'month' ? date.toISOString().slice(0, 7) : date.toISOString().slice(0, 4));
+  }
+  return buckets;
+}
+
 export async function onRequest(context) {
   const path = Array.isArray(context.params.path) ? context.params.path.join('/') : (context.params.path || '');
   const method = context.request.method;
@@ -182,6 +203,45 @@ export async function onRequest(context) {
       .bind(...(cursor ? [cursor, limit + 1] : [limit + 1])).all();
     const resultPage = page(result.results, limit);
     return json({ activities: resultPage.items, page: resultPage.page });
+  }
+  if (method === 'GET' && path === 'analytics') {
+    const requested = new URL(context.request.url).searchParams.get('period') || 'day';
+    const period = ANALYTICS_PERIODS[requested] ? requested : 'day';
+    const config = ANALYTICS_PERIODS[period];
+    const buckets = analyticsBuckets(period);
+    const cutoff = period === 'day' ? Date.now() - 31 * 86400000 :
+      period === 'month' ? Date.now() - 370 * 86400000 : Date.now() - 6 * 366 * 86400000;
+    const expression = `strftime('${config.format}', datetime(created_at / 1000, 'unixepoch', '+9 hours'))`;
+    const [members, reviews, activities, history] = await Promise.all([
+      context.env.DB.prepare(`SELECT ${expression} AS bucket, COUNT(*) AS count FROM users
+        WHERE created_at >= ? GROUP BY bucket ORDER BY bucket`).bind(cutoff).all(),
+      context.env.DB.prepare(`SELECT ${expression} AS bucket, COUNT(*) AS count FROM reviews
+        WHERE created_at >= ? GROUP BY bucket ORDER BY bucket`).bind(cutoff).all(),
+      context.env.DB.prepare(`SELECT ${expression} AS bucket, COUNT(*) AS count FROM activity_events
+        WHERE created_at >= ? GROUP BY bucket ORDER BY bucket`).bind(cutoff).all(),
+      cached('restaurant-history', 60_000,
+        () => githubFileJson(context, 'jwhtws/product2', 'data/restaurant-change-history.json'))
+    ]);
+    const maps = [members, reviews, activities].map(result =>
+      new Map(result.results.map(item => [item.bucket, Number(item.count)])));
+    const restaurantAdded = new Map(), restaurantRemoved = new Map();
+    for (const entry of history?.entries || []) {
+      const bucket = period === 'day' ? entry.date : period === 'month' ? entry.date.slice(0, 7) : entry.date.slice(0, 4);
+      restaurantAdded.set(bucket, (restaurantAdded.get(bucket) || 0) + Number(entry.addedCount || 0));
+      restaurantRemoved.set(bucket, (restaurantRemoved.get(bucket) || 0) + Number(entry.removedCount || 0));
+    }
+    return json({
+      period,
+      label: config.label,
+      points: buckets.map((bucket, index) => ({
+        bucket,
+        members: maps[0].get(bucket) || 0,
+        reviews: maps[1].get(bucket) || 0,
+        activities: maps[2].get(bucket) || 0,
+        restaurantAdded: restaurantAdded.get(bucket) || 0,
+        restaurantRemoved: restaurantRemoved.get(bucket) || 0
+      }))
+    });
   }
   if (method === 'GET' && path === 'restaurant-sync') {
     const { runs, manifest, validation, refresh, history } = await cached('restaurant-sync', 60_000, async () => {

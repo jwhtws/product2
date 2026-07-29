@@ -64,6 +64,53 @@
       </div>`;
   }
 
+  function lineChart(points, series) {
+    const width = 900, height = 260, left = 48, right = 18, top = 22, bottom = 42;
+    const chartWidth = width - left - right, chartHeight = height - top - bottom;
+    const maximum = Math.max(1, ...points.flatMap(point => series.map(item => Number(point[item.key] || 0))));
+    const x = index => left + (points.length < 2 ? chartWidth / 2 : index * chartWidth / (points.length - 1));
+    const y = value => top + chartHeight - (Number(value || 0) / maximum * chartHeight);
+    const labelEvery = Math.max(1, Math.ceil(points.length / 8));
+    return `<div class="chart-shell"><svg class="analytics-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="기간별 데이터 그래프">
+      ${[0, .25, .5, .75, 1].map(ratio => `<line x1="${left}" y1="${top + chartHeight * ratio}" x2="${width - right}" y2="${top + chartHeight * ratio}" class="chart-grid"/><text x="${left - 8}" y="${top + chartHeight * ratio + 4}" text-anchor="end">${Math.round(maximum * (1 - ratio)).toLocaleString('ko-KR')}</text>`).join('')}
+      ${series.map(item => `<polyline points="${points.map((point, index) => `${x(index)},${y(point[item.key])}`).join(' ')}" fill="none" stroke="${item.color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`).join('')}
+      ${points.map((point, index) => index % labelEvery === 0 || index === points.length - 1 ? `<text x="${x(index)}" y="${height - 13}" text-anchor="middle">${escapeHtml(point.bucket)}</text>` : '').join('')}
+    </svg><div class="chart-legend">${series.map(item => `<span><i style="background:${item.color}"></i>${item.label}</span>`).join('')}</div></div>`;
+  }
+
+  async function renderAnalytics(period = 'day') {
+    loading();
+    const data = await api(`analytics?period=${encodeURIComponent(period)}`);
+    const totals = data.points.reduce((result, point) => ({
+      members: result.members + point.members,
+      reviews: result.reviews + point.reviews,
+      activities: result.activities + point.activities,
+      restaurantAdded: result.restaurantAdded + point.restaurantAdded,
+      restaurantRemoved: result.restaurantRemoved + point.restaurantRemoved
+    }), { members: 0, reviews: 0, activities: 0, restaurantAdded: 0, restaurantRemoved: 0 });
+    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
+      `<button class="${period === value ? 'active' : ''}" data-period="${value}">${label}</button>`).join('')}</div>`;
+    $('#admin-content').innerHTML = `${heading('ANALYTICS', '데이터 분석', '회원, 리뷰, 활동과 식당 변화를 기간별로 확인합니다.', periodButtons)}
+      <div class="metrics">
+        <article class="metric"><span>신규 회원</span><strong>${totals.members.toLocaleString('ko-KR')}</strong><small>${data.label} 조회 기간 합계</small></article>
+        <article class="metric"><span>등록 리뷰</span><strong>${totals.reviews.toLocaleString('ko-KR')}</strong><small>${data.label} 조회 기간 합계</small></article>
+        <article class="metric"><span>사용자 활동</span><strong>${totals.activities.toLocaleString('ko-KR')}</strong><small>검색·저장·리스트</small></article>
+        <article class="metric"><span>식당 순변동</span><strong>${(totals.restaurantAdded - totals.restaurantRemoved).toLocaleString('ko-KR')}</strong><small>추가 ${totals.restaurantAdded.toLocaleString('ko-KR')} · 제거 ${totals.restaurantRemoved.toLocaleString('ko-KR')}</small></article>
+      </div>
+      <article class="panel analytics-panel"><h2>이용자 데이터 추이</h2>${lineChart(data.points, [
+        { key: 'members', label: '신규 회원', color: '#247a52' },
+        { key: 'reviews', label: '리뷰', color: '#f05a2a' },
+        { key: 'activities', label: '사용자 활동', color: '#5a62d6' }
+      ])}</article>
+      <article class="panel analytics-panel"><h2>식당 개업·폐업 추이</h2>${lineChart(data.points, [
+        { key: 'restaurantAdded', label: '추가 식당', color: '#247a52' },
+        { key: 'restaurantRemoved', label: '제거 식당', color: '#c64235' }
+      ])}</article>
+      <article class="panel analytics-panel"><h2>기간별 정확한 수치</h2><div class="table-wrap"><table><thead><tr><th>기간</th><th>신규 회원</th><th>리뷰</th><th>활동</th><th>식당 추가</th><th>식당 제거</th></tr></thead><tbody>${data.points.map(point =>
+        `<tr><td><strong>${escapeHtml(point.bucket)}</strong></td><td>${point.members.toLocaleString('ko-KR')}</td><td>${point.reviews.toLocaleString('ko-KR')}</td><td>${point.activities.toLocaleString('ko-KR')}</td><td>${point.restaurantAdded.toLocaleString('ko-KR')}</td><td>${point.restaurantRemoved.toLocaleString('ko-KR')}</td></tr>`).join('')}</tbody></table></div></article>`;
+    $$('[data-period]').forEach(button => button.addEventListener('click', () => renderAnalytics(button.dataset.period)));
+  }
+
   async function renderMembers(query = '', cursor = null) {
     loading();
     const data = await api(listPath('members', query, cursor));
@@ -215,7 +262,7 @@
     $$('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, analytics: renderAnalytics, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;
