@@ -228,6 +228,7 @@
   }
 
   async function enterAdmin() {
+    sessionStorage.setItem('mukdang_admin_active', '1');
     $('#admin-login').hidden = true;
     $('#admin-app').hidden = false;
     await render();
@@ -246,7 +247,11 @@
       button.disabled = false;
     }
   });
-  $('#logout').addEventListener('click', async () => { await api('logout', { method: 'POST' }); showLogin(); });
+  $('#logout').addEventListener('click', async () => {
+    sessionStorage.removeItem('mukdang_admin_active');
+    await api('logout', { method: 'POST' });
+    showLogin();
+  });
   $('#menu-toggle').addEventListener('click', () => $('.sidebar').classList.toggle('open'));
   $$('[data-view]').forEach(button => button.addEventListener('click', () => render(button.dataset.view)));
   $('#today').textContent = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -256,6 +261,13 @@
     fetch('https://product1-84t.pages.dev/data/restaurants/validation-report.json?v=20260729-1').then(response => response.ok ? response.json() : null)
   ]).then(([data, report]) => { restaurantMeta = data; validationReport = report; }).catch(() => {});
 
-  // 관리자 링크를 열거나 새로고침할 때마다 코드를 다시 확인한다.
-  api('logout').catch(() => {}).finally(showLogin);
+  // 같은 탭의 새로고침은 유지하고, 새 탭·새 브라우저에서는 다시 인증한다.
+  if (sessionStorage.getItem('mukdang_admin_active') === '1') {
+    api('session').then(enterAdmin).catch(() => {
+      sessionStorage.removeItem('mukdang_admin_active');
+      showLogin();
+    });
+  } else {
+    api('logout').catch(() => {}).finally(showLogin);
+  }
 })();
