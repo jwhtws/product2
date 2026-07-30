@@ -456,6 +456,76 @@ export async function onRequest(context) {
         (right.activities + right.reviews) - (left.activities + left.reviews) || right.lastActiveAt - left.lastActiveAt).slice(0, 50)
     });
   }
+  if (method === 'GET' && path === 'food-popups') {
+    const url = new URL(context.request.url);
+    const query = String(url.searchParams.get('q') || '').trim().slice(0, 100);
+    const requestedStatus = url.searchParams.get('status') || 'all';
+    const status = ['draft', 'published', 'hidden'].includes(requestedStatus) ? requestedStatus : null;
+    const where = [], bindings = [];
+    if (status) { where.push('status = ?'); bindings.push(status); }
+    if (query) {
+      where.push("(name LIKE ? ESCAPE '\\' OR venue LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR region LIKE ? ESCAPE '\\')");
+      const pattern = likePattern(query); bindings.push(pattern, pattern, pattern, pattern);
+    }
+    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const [rows, summary] = await Promise.all([
+      context.env.DB.prepare(`SELECT * FROM food_popups ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY CASE WHEN end_date >= ? THEN 0 ELSE 1 END, start_date ASC, id DESC LIMIT 500`)
+        .bind(...bindings, today).all(),
+      context.env.DB.prepare(`SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status = 'published' AND start_date <= ? AND end_date >= ? THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN status = 'published' AND start_date > ? THEN 1 ELSE 0 END) AS upcoming,
+        SUM(CASE WHEN end_date < ? THEN 1 ELSE 0 END) AS ended FROM food_popups`)
+        .bind(today, today, today, today).first()
+    ]);
+    return json({
+      popups: rows.results.map(item => ({ ...item, phase: item.start_date > today ? 'upcoming' : item.end_date < today ? 'ended' : 'active' })),
+      summary: { total: Number(summary?.total || 0), active: Number(summary?.active || 0), upcoming: Number(summary?.upcoming || 0), ended: Number(summary?.ended || 0) }
+    });
+  }
+  if ((method === 'POST' && path === 'food-popups') || (method === 'PATCH' && path.startsWith('food-popups/'))) {
+    const id = method === 'PATCH' ? positiveId(path.split('/')[1]) : null;
+    if (method === 'PATCH' && !id) return json({ error: '올바른 푸드 팝업 ID가 필요합니다.' }, 400);
+    const current = id ? await context.env.DB.prepare('SELECT * FROM food_popups WHERE id = ?').bind(id).first() : {};
+    if (id && !current) return json({ error: '푸드 팝업을 찾을 수 없습니다.' }, 404);
+    const data = await body(context.request);
+    const value = (camel, column, limit) => data[camel] === undefined ? String(current[column] || '') : String(data[camel] || '').trim().slice(0, limit);
+    const popup = {
+      name: value('name', 'name', 120), venue: value('venue', 'venue', 120),
+      address: value('address', 'address', 250), region: value('region', 'region', 60),
+      category: value('category', 'category', 60), description: value('description', 'description', 2000),
+      startDate: value('startDate', 'start_date', 10), endDate: value('endDate', 'end_date', 10),
+      openingHours: value('openingHours', 'opening_hours', 100), sourceUrl: value('sourceUrl', 'source_url', 500),
+      imageUrl: value('imageUrl', 'image_url', 500),
+      status: data.status === undefined ? (current.status || 'draft') : (['draft', 'published', 'hidden'].includes(data.status) ? data.status : 'draft')
+    };
+    if (!popup.name || !popup.venue || !popup.address || !popup.region ||
+      !taskRange('day', popup.startDate) || !taskRange('day', popup.endDate) || popup.endDate < popup.startDate) {
+      return json({ error: '이름, 장소, 주소, 지역과 올바른 운영 기간이 필요합니다.' }, 400);
+    }
+    const now = Date.now();
+    if (id) {
+      await context.env.DB.prepare(`UPDATE food_popups SET name=?, venue=?, address=?, region=?, category=?, description=?,
+        start_date=?, end_date=?, opening_hours=?, source_url=?, image_url=?, status=?, updated_at=? WHERE id=?`)
+        .bind(popup.name, popup.venue, popup.address, popup.region, popup.category, popup.description,
+          popup.startDate, popup.endDate, popup.openingHours, popup.sourceUrl, popup.imageUrl, popup.status, now, id).run();
+      await audit(context, '푸드 팝업 수정', `팝업 ${id}: ${popup.name}`);
+      return json({ ok: true });
+    }
+    const result = await context.env.DB.prepare(`INSERT INTO food_popups
+      (name,venue,address,region,category,description,start_date,end_date,opening_hours,source_url,image_url,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(popup.name, popup.venue, popup.address, popup.region, popup.category,
+      popup.description, popup.startDate, popup.endDate, popup.openingHours, popup.sourceUrl, popup.imageUrl, popup.status, now, now).run();
+    await audit(context, '푸드 팝업 등록', `${popup.startDate}: ${popup.name}`);
+    return json({ ok: true, id: result.meta.last_row_id }, 201);
+  }
+  if (method === 'DELETE' && path.startsWith('food-popups/')) {
+    const id = positiveId(path.split('/')[1]);
+    if (!id) return json({ error: '올바른 푸드 팝업 ID가 필요합니다.' }, 400);
+    await context.env.DB.prepare('DELETE FROM food_popups WHERE id = ?').bind(id).run();
+    await audit(context, '푸드 팝업 삭제', `팝업 ${id}`);
+    return json({ ok: true });
+  }
   if (method === 'GET' && path === 'tasks') {
     const url = new URL(context.request.url);
     const period = url.searchParams.get('period') || 'day';

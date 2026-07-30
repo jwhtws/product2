@@ -358,6 +358,65 @@
     });
   }
 
+  async function renderFoodPopups(query = '', status = 'all') {
+    loading();
+    const params = new URLSearchParams({ q: query, status });
+    const data = await api(`food-popups?${params}`);
+    const rows = data.popups;
+    const statusLabel = value => ({ draft: '임시 저장', published: '게시', hidden: '숨김' }[value] || value);
+    const phaseLabel = value => ({ upcoming: '예정', active: '진행 중', ended: '종료' }[value] || value);
+    $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '푸드 팝업을 등록하고 게시 상태와 운영 기간을 관리합니다.',
+      `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"><select id="popup-status"><option value="all">전체 상태</option><option value="published" ${status === 'published' ? 'selected' : ''}>게시</option><option value="draft" ${status === 'draft' ? 'selected' : ''}>임시 저장</option><option value="hidden" ${status === 'hidden' ? 'selected' : ''}>숨김</option></select></div>`)}
+      <div class="metrics">
+        <article class="metric"><span>전체 팝업</span><strong>${data.summary.total.toLocaleString('ko-KR')}</strong><small>등록 데이터</small></article>
+        <article class="metric"><span>진행 중</span><strong>${data.summary.active.toLocaleString('ko-KR')}</strong><small>오늘 운영 중</small></article>
+        <article class="metric"><span>오픈 예정</span><strong>${data.summary.upcoming.toLocaleString('ko-KR')}</strong><small>게시 예정 팝업</small></article>
+        <article class="metric"><span>종료</span><strong>${data.summary.ended.toLocaleString('ko-KR')}</strong><small>운영 기간 종료</small></article>
+      </div>
+      <article class="panel popup-compose"><h2 id="popup-form-title">새 푸드 팝업</h2><form id="popup-form" class="popup-form">
+        <input name="id" type="hidden"><label>팝업 이름<input name="name" maxlength="120" required></label>
+        <label>장소<input name="venue" maxlength="120" required></label><label>지역<input name="region" maxlength="60" required placeholder="서울 성동구"></label>
+        <label>분류<input name="category" maxlength="60" placeholder="디저트·베이커리"></label><label class="wide">주소<input name="address" maxlength="250" required></label>
+        <label>시작일<input name="startDate" type="date" required></label><label>종료일<input name="endDate" type="date" required></label>
+        <label>운영 시간<input name="openingHours" maxlength="100" placeholder="매일 11:00–20:00"></label>
+        <label>게시 상태<select name="status"><option value="draft">임시 저장</option><option value="published">게시</option><option value="hidden">숨김</option></select></label>
+        <label class="wide">출처 URL<input name="sourceUrl" type="url" maxlength="500"></label><label class="wide">이미지 URL<input name="imageUrl" type="url" maxlength="500"></label>
+        <label class="wide">소개<textarea name="description" maxlength="2000"></textarea></label>
+        <div class="popup-form-actions"><button type="submit">등록</button><button type="button" class="small-button" id="popup-form-cancel" hidden>수정 취소</button></div>
+      </form></article>
+      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>팝업</th><th>장소·지역</th><th>운영 기간</th><th>진행</th><th>게시</th><th>관리</th></tr></thead><tbody>${rows.map(item =>
+        `<tr><td><strong>${escapeHtml(item.name)}</strong><br><small>${escapeHtml(item.category || '분류 없음')}</small></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.region)}</small></td><td>${escapeHtml(item.start_date)}<br>${escapeHtml(item.end_date)}</td><td><span class="status ${item.phase === 'ended' ? 'warn' : ''}">${phaseLabel(item.phase)}</span></td><td><span class="status popup-status-${item.status}">${statusLabel(item.status)}</span></td><td><div class="row-actions"><button class="small-button" data-popup-edit="${item.id}">수정</button><button class="small-button" data-popup-toggle="${item.id}" data-status="${item.status}">${item.status === 'published' ? '숨김' : '게시'}</button><button class="small-button danger" data-popup-delete="${item.id}">삭제</button></div></td></tr>`
+      ).join('')}</tbody></table>` : '<div class="empty-admin">등록된 푸드 팝업이 없습니다.</div>'}</div>`;
+    const form = $('#popup-form');
+    $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, status));
+    $('#popup-status').addEventListener('change', event => renderFoodPopups(query, event.target.value));
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(form)), id = values.id;
+      delete values.id;
+      await api(id ? `food-popups/${id}` : 'food-popups', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(values) });
+      toast(id ? '푸드 팝업을 수정했습니다.' : '푸드 팝업을 등록했습니다.'); renderFoodPopups(query, status);
+    });
+    $('#popup-form-cancel').addEventListener('click', () => renderFoodPopups(query, status));
+    $$('[data-popup-edit]').forEach(button => button.addEventListener('click', () => {
+      const item = rows.find(row => String(row.id) === button.dataset.popupEdit);
+      const fields = { name: 'name', venue: 'venue', region: 'region', category: 'category', address: 'address', startDate: 'start_date', endDate: 'end_date', openingHours: 'opening_hours', status: 'status', sourceUrl: 'source_url', imageUrl: 'image_url', description: 'description' };
+      for (const [name, key] of Object.entries(fields)) form.elements[name].value = item[key] || '';
+      form.id.value = item.id; $('#popup-form-title').textContent = '푸드 팝업 수정';
+      form.querySelector('[type="submit"]').textContent = '수정 저장'; $('#popup-form-cancel').hidden = false;
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    $$('[data-popup-toggle]').forEach(button => button.addEventListener('click', async () => {
+      await api(`food-popups/${button.dataset.popupToggle}`, { method: 'PATCH', body: JSON.stringify({ status: button.dataset.status === 'published' ? 'hidden' : 'published' }) });
+      toast('게시 상태를 변경했습니다.'); renderFoodPopups(query, status);
+    }));
+    $$('[data-popup-delete]').forEach(button => button.addEventListener('click', async () => {
+      if (!confirm('이 푸드 팝업 데이터를 삭제할까요?')) return;
+      await api(`food-popups/${button.dataset.popupDelete}`, { method: 'DELETE' });
+      toast('푸드 팝업을 삭제했습니다.'); renderFoodPopups(query, status);
+    }));
+  }
+
   async function renderRestaurants() {
     loading();
     const sync = await api('restaurant-sync');
@@ -464,7 +523,7 @@
       button.dataset.view === view || (button.dataset.view === 'reviews' && view === 'reviewsettings')));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, reviewsettings: renderReviewSettings, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, reviewsettings: renderReviewSettings, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, foodpopups: renderFoodPopups, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;
