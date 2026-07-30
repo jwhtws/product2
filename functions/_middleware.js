@@ -6,6 +6,14 @@ const PRIVATE_HEADERS = {
 };
 
 export async function onRequest(context) {
+  const url = new URL(context.request.url);
+  if (url.hostname === 'admin.mukdang.com' && url.pathname === '/') {
+    const headers = new Headers(PRIVATE_HEADERS);
+    headers.set('Cache-Control', 'no-store');
+    headers.set('Location', `${url.origin}/ops-7c4e91b6`);
+    return new Response(null, { status: 308, headers });
+  }
+
   const response = await context.next();
   const headers = new Headers(response.headers);
   Object.entries(PRIVATE_HEADERS).forEach(([name, value]) => headers.set(name, value));
