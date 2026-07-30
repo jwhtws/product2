@@ -225,6 +225,52 @@
     $('#ranking-anchor').addEventListener('change', event => renderSearchRankings(period, event.target.value));
   }
 
+  async function renderUserAnalytics(period = 'day', anchor = null) {
+    const today = todayKst();
+    anchor ||= period === 'day' ? today : period === 'week' ? weekAnchorKst(today) :
+      period === 'month' ? today.slice(0, 7) : today.slice(0, 4);
+    loading();
+    const data = await api(`user-analytics?period=${encodeURIComponent(period)}&anchor=${encodeURIComponent(anchor)}`);
+    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
+      `<button class="${period === value ? 'active' : ''}" data-user-period="${value}">${label}</button>`).join('')}</div>`;
+    const anchorInput = period === 'year'
+      ? `<input id="user-anchor" type="number" min="2020" max="2100" value="${escapeHtml(anchor)}" aria-label="사용자 행동 조회 연도">`
+      : `<input id="user-anchor" type="${period === 'day' ? 'date' : period === 'week' ? 'week' : 'month'}" value="${escapeHtml(anchor)}" aria-label="사용자 행동 조회 기간">`;
+    const knownActivities = data.summary.searches + data.summary.saves + data.summary.lists;
+    $('#admin-content').innerHTML = `${heading('USER BEHAVIOR', '사용자 행동 분석', '검색·저장·리뷰와 회원별 활동을 한눈에 확인합니다.',
+      `${periodButtons}<div class="task-anchor">${anchorInput}</div>`)}
+      <div class="metrics">
+        <article class="metric"><span>전체 행동</span><strong>${(data.summary.activities + data.summary.reviews).toLocaleString('ko-KR')}</strong><small>활동과 리뷰 합계</small></article>
+        <article class="metric"><span>식당 검색</span><strong>${data.summary.searches.toLocaleString('ko-KR')}</strong><small>${knownActivities ? (data.summary.searches / knownActivities * 100).toFixed(1) : '0.0'}% 비중</small></article>
+        <article class="metric"><span>리뷰 등록</span><strong>${data.summary.reviews.toLocaleString('ko-KR')}</strong><small>${data.summary.reviewers.toLocaleString('ko-KR')}명 작성</small></article>
+        <article class="metric"><span>활동 회원</span><strong>${data.summary.activeMembers.toLocaleString('ko-KR')}</strong><small>로그인 회원 중 활동자</small></article>
+      </div>
+      <div class="behavior-grid">
+        <article class="panel"><h2>행동 구성</h2><div class="health-list">
+          <div class="health-item"><span>검색</span><b>${data.summary.searches.toLocaleString('ko-KR')}회</b></div>
+          <div class="health-item"><span>맛집 저장·해제</span><b>${data.summary.saves.toLocaleString('ko-KR')}회</b></div>
+          <div class="health-item"><span>리스트 관리</span><b>${data.summary.lists.toLocaleString('ko-KR')}회</b></div>
+          <div class="health-item"><span>리뷰 등록</span><b>${data.summary.reviews.toLocaleString('ko-KR')}회</b></div>
+          <div class="health-item"><span>비회원 활동</span><b>${data.summary.anonymous.toLocaleString('ko-KR')}회</b></div>
+        </div></article>
+        <article class="panel"><h2>체류시간</h2>
+          <div class="tracking-state warn"><strong>수집 연결 필요</strong><p>현재 본사이트는 검색·저장·리스트·리뷰만 기록합니다. 체류시간은 product1에 수집 코드를 저장한 이후부터 표시할 수 있습니다.</p></div>
+        </article>
+      </div>
+      <article class="panel analytics-panel"><h2>사용자 행동 추이</h2>${data.trend.length ? lineChart(data.trend, [
+        { key: 'searches', label: '검색', color: '#f05a2a' },
+        { key: 'saves', label: '저장', color: '#247a52' },
+        { key: 'reviews', label: '리뷰', color: '#5a62d6' }
+      ]) : '<div class="empty-admin">선택 기간에 사용자 행동이 없습니다.</div>'}</article>
+      <article class="panel analytics-panel"><h2>회원별 활동 <small>상위 50명</small></h2>
+        <div class="table-wrap">${data.users.length ? `<table><thead><tr><th>회원</th><th>검색</th><th>저장</th><th>리스트</th><th>리뷰</th><th>총 행동</th><th>최근 활동</th></tr></thead><tbody>${data.users.map(item =>
+          `<tr><td><strong>${escapeHtml(item.name)}</strong><br><small>${escapeHtml(item.email)}</small></td><td>${item.searches.toLocaleString('ko-KR')}</td><td>${item.saves.toLocaleString('ko-KR')}</td><td>${item.lists.toLocaleString('ko-KR')}</td><td>${item.reviews.toLocaleString('ko-KR')}</td><td><strong>${(item.activities + item.reviews).toLocaleString('ko-KR')}</strong></td><td>${new Date(item.lastActiveAt).toLocaleString('ko-KR')}</td></tr>`
+        ).join('')}</tbody></table>` : '<div class="empty-admin">선택 기간에 로그인 회원 활동이 없습니다.</div>'}</div>
+      </article>`;
+    $$('[data-user-period]').forEach(button => button.addEventListener('click', () => renderUserAnalytics(button.dataset.userPeriod)));
+    $('#user-anchor').addEventListener('change', event => renderUserAnalytics(period, event.target.value));
+  }
+
   async function renderMembers(query = '', cursor = null) {
     loading();
     const data = await api(listPath('members', query, cursor));
@@ -376,7 +422,7 @@
     $$('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;

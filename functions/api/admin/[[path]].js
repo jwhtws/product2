@@ -326,6 +326,102 @@ export async function onRequest(context) {
       }))
     });
   }
+  if (method === 'GET' && path === 'user-analytics') {
+    const url = new URL(context.request.url);
+    const period = url.searchParams.get('period') || 'day';
+    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const anchor = url.searchParams.get('anchor') ||
+      (period === 'day' ? today : period === 'week' ? weekAnchor(today) :
+        period === 'month' ? today.slice(0, 7) : today.slice(0, 4));
+    const range = taskRange(period, anchor);
+    if (!range) return json({ error: '올바른 사용자 행동 조회 기간이 필요합니다.' }, 400);
+    const start = Date.parse(`${range.start}T00:00:00+09:00`);
+    const end = Date.parse(`${range.end}T00:00:00+09:00`);
+    const bucketExpression = period === 'day'
+      ? "strftime('%H:00', datetime(created_at / 1000, 'unixepoch', '+9 hours'))"
+      : period === 'week' || period === 'month'
+        ? "strftime('%Y-%m-%d', datetime(created_at / 1000, 'unixepoch', '+9 hours'))"
+        : "strftime('%Y-%m', datetime(created_at / 1000, 'unixepoch', '+9 hours'))";
+    const [activitySummary, reviewSummary, activeMembers, activityTrend, reviewTrend, userActivity, userReviews] = await Promise.all([
+      context.env.DB.prepare(`SELECT COUNT(*) AS total,
+        SUM(CASE WHEN event_type = 'search' THEN 1 ELSE 0 END) AS searches,
+        SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) AS saves,
+        SUM(CASE WHEN event_type = 'list' THEN 1 ELSE 0 END) AS lists,
+        SUM(CASE WHEN user_id IS NULL THEN 1 ELSE 0 END) AS anonymous
+        FROM activity_events WHERE created_at >= ? AND created_at < ?`).bind(start, end).first(),
+      context.env.DB.prepare(`SELECT COUNT(*) AS reviews, COUNT(DISTINCT user_id) AS reviewers
+        FROM reviews WHERE created_at >= ? AND created_at < ?`).bind(start, end).first(),
+      context.env.DB.prepare(`SELECT COUNT(*) AS count FROM (
+        SELECT user_id FROM activity_events WHERE user_id IS NOT NULL AND created_at >= ? AND created_at < ?
+        UNION SELECT user_id FROM reviews WHERE created_at >= ? AND created_at < ?
+      )`).bind(start, end, start, end).first(),
+      context.env.DB.prepare(`SELECT ${bucketExpression} AS bucket, COUNT(*) AS activities,
+        SUM(CASE WHEN event_type = 'search' THEN 1 ELSE 0 END) AS searches,
+        SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) AS saves,
+        SUM(CASE WHEN event_type = 'list' THEN 1 ELSE 0 END) AS lists
+        FROM activity_events WHERE created_at >= ? AND created_at < ?
+        GROUP BY bucket ORDER BY bucket`).bind(start, end).all(),
+      context.env.DB.prepare(`SELECT ${bucketExpression} AS bucket, COUNT(*) AS reviews
+        FROM reviews WHERE created_at >= ? AND created_at < ?
+        GROUP BY bucket ORDER BY bucket`).bind(start, end).all(),
+      context.env.DB.prepare(`SELECT users.id, users.name, users.email, COUNT(*) AS activities,
+        SUM(CASE WHEN event_type = 'search' THEN 1 ELSE 0 END) AS searches,
+        SUM(CASE WHEN event_type = 'save' THEN 1 ELSE 0 END) AS saves,
+        SUM(CASE WHEN event_type = 'list' THEN 1 ELSE 0 END) AS lists,
+        MAX(activity_events.created_at) AS last_active_at
+        FROM activity_events JOIN users ON users.id = activity_events.user_id
+        WHERE activity_events.created_at >= ? AND activity_events.created_at < ?
+        GROUP BY users.id ORDER BY activities DESC LIMIT 50`).bind(start, end).all(),
+      context.env.DB.prepare(`SELECT reviews.user_id, users.name, users.email, COUNT(*) AS reviews,
+        MAX(reviews.created_at) AS last_review_at FROM reviews
+        JOIN users ON users.id = reviews.user_id
+        WHERE reviews.created_at >= ? AND reviews.created_at < ?
+        GROUP BY reviews.user_id`).bind(start, end).all()
+    ]);
+    const reviewByUser = new Map(userReviews.results.map(item => [Number(item.user_id), item]));
+    const userRows = new Map(userActivity.results.map(item => [Number(item.id), {
+      id: Number(item.id), name: item.name, email: item.email,
+      activities: Number(item.activities), searches: Number(item.searches),
+      saves: Number(item.saves), lists: Number(item.lists),
+      reviews: Number(reviewByUser.get(Number(item.id))?.reviews || 0),
+      lastActiveAt: Math.max(Number(item.last_active_at || 0), Number(reviewByUser.get(Number(item.id))?.last_review_at || 0))
+    }]));
+    for (const item of userReviews.results) {
+      const id = Number(item.user_id);
+      if (userRows.has(id)) continue;
+      userRows.set(id, {
+        id, name: item.name, email: item.email, activities: 0, searches: 0, saves: 0, lists: 0,
+        reviews: Number(item.reviews), lastActiveAt: Number(item.last_review_at)
+      });
+    }
+    const trend = new Map();
+    for (const item of activityTrend.results) trend.set(item.bucket, {
+      bucket: item.bucket, activities: Number(item.activities), searches: Number(item.searches),
+      saves: Number(item.saves), lists: Number(item.lists), reviews: 0
+    });
+    for (const item of reviewTrend.results) {
+      const point = trend.get(item.bucket) || { bucket: item.bucket, activities: 0, searches: 0, saves: 0, lists: 0, reviews: 0 };
+      point.reviews = Number(item.reviews);
+      trend.set(item.bucket, point);
+    }
+    return json({
+      period, anchor, range,
+      summary: {
+        activities: Number(activitySummary?.total || 0),
+        searches: Number(activitySummary?.searches || 0),
+        saves: Number(activitySummary?.saves || 0),
+        lists: Number(activitySummary?.lists || 0),
+        anonymous: Number(activitySummary?.anonymous || 0),
+        reviews: Number(reviewSummary?.reviews || 0),
+        reviewers: Number(reviewSummary?.reviewers || 0),
+        activeMembers: Number(activeMembers?.count || 0),
+        dwellTracking: false
+      },
+      trend: [...trend.values()].sort((left, right) => left.bucket.localeCompare(right.bucket)),
+      users: [...userRows.values()].sort((left, right) =>
+        (right.activities + right.reviews) - (left.activities + left.reviews) || right.lastActiveAt - left.lastActiveAt).slice(0, 50)
+    });
+  }
   if (method === 'GET' && path === 'tasks') {
     const url = new URL(context.request.url);
     const period = url.searchParams.get('period') || 'day';
