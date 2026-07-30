@@ -35,6 +35,12 @@
     return `${path}?${params}`;
   };
   const nextPage = page => page?.hasMore ? `<div class="pagination"><button class="small-button" data-next-cursor="${page.nextCursor}">다음 50개</button></div>` : '';
+  const reviewTabs = active => `<div class="period-tabs">
+    <button class="${active === 'reviews' ? 'active' : ''}" data-review-view="reviews">리뷰 목록</button>
+    <button class="${active === 'reviewsettings' ? 'active' : ''}" data-review-view="reviewsettings">리뷰 제한 설정</button>
+  </div>`;
+  const bindReviewTabs = () => $$('[data-review-view]').forEach(button =>
+    button.addEventListener('click', () => render(button.dataset.reviewView)));
 
   function loading() {
     $('#admin-content').innerHTML = '<div class="empty-admin">서버 데이터를 불러오는 중입니다.</div>';
@@ -300,10 +306,11 @@
     loading();
     const data = await api(listPath('reviews', query, cursor));
     const rows = data.reviews;
-    $('#admin-content').innerHTML = `${heading('MODERATION', '리뷰 관리', '서버에 등록된 리뷰를 검토하고 관리합니다.', `<div class="toolbar"><input id="review-search" value="${escapeHtml(query)}" placeholder="리뷰 검색"></div>`)}
+    $('#admin-content').innerHTML = `${heading('MODERATION', '리뷰 관리', '서버에 등록된 리뷰를 검토하고 관리합니다.', `${reviewTabs('reviews')}<div class="toolbar"><input id="review-search" value="${escapeHtml(query)}" placeholder="리뷰 검색"></div>`)}
       <div class="table-wrap">${rows.length ? `<table><thead><tr><th>작성자</th><th>식당</th><th>별점</th><th>내용</th><th>상태</th><th>작성일</th><th>관리</th></tr></thead><tbody>${rows.map(item =>
         `<tr><td>${escapeHtml(item.author)}</td><td>${escapeHtml(item.restaurant_name)}</td><td>${'★'.repeat(item.rating)}</td><td class="review-text">${escapeHtml(item.text)}</td><td><span class="status ${item.hidden ? 'warn' : ''}">${item.hidden ? '숨김' : '공개'}</span></td><td>${new Date(item.created_at).toLocaleDateString('ko-KR')}</td><td><div class="row-actions"><button class="small-button" data-review-hide="${item.id}" data-hidden="${item.hidden}">${item.hidden ? '공개' : '숨김'}</button><button class="small-button danger" data-review-delete="${item.id}">삭제</button></div></td></tr>`
       ).join('')}</tbody></table>` : '<div class="empty-admin">등록된 리뷰가 없습니다.</div>'}</div>${nextPage(data.page)}`;
+    bindReviewTabs();
     $('#review-search').addEventListener('change', event => renderReviews(event.target.value));
     $('[data-next-cursor]')?.addEventListener('click', event => renderReviews(query, event.currentTarget.dataset.nextCursor));
     $$('[data-review-hide]').forEach(button => button.addEventListener('click', async () => {
@@ -321,8 +328,9 @@
     loading();
     const data = await api('review-settings');
     const settings = data.settings;
-    $('#admin-content').innerHTML = `${heading('REVIEW POLICY', '리뷰 제한 설정', '회원 리뷰 등록 제한을 변경합니다. 저장 즉시 서비스에 적용됩니다.')}
+    $('#admin-content').innerHTML = `${heading('MODERATION', '리뷰 관리', '회원 리뷰를 검토하고 등록 제한을 관리합니다.', reviewTabs('reviewsettings'))}
       <article class="panel settings-panel">
+        <h2>리뷰 제한 설정</h2>
         <form id="review-settings-form" class="settings-form">
           <label><span>회원당 하루 전체 리뷰 제한</span><input name="daily_review_limit" type="number" min="1" max="100" value="${settings.daily_review_limit}" required><small>모든 식당에 작성한 리뷰를 합산합니다.</small></label>
           <label><span>같은 식당 하루 리뷰 제한</span><input name="restaurant_daily_review_limit" type="number" min="1" max="20" value="${settings.restaurant_daily_review_limit}" required><small>삭제한 리뷰도 당일 작성 횟수에 포함됩니다.</small></label>
@@ -330,6 +338,7 @@
           <button type="submit">설정 저장</button>
         </form>
       </article>`;
+    bindReviewTabs();
     $('#review-settings-form').addEventListener('submit', async event => {
       event.preventDefault();
       const form = event.currentTarget, button = form.querySelector('button[type="submit"]');
@@ -451,7 +460,8 @@
 
   async function render(view = currentView) {
     currentView = view;
-    $$('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
+    $$('[data-view]').forEach(button => button.classList.toggle('active',
+      button.dataset.view === view || (button.dataset.view === 'reviews' && view === 'reviewsettings')));
     $('.sidebar').classList.remove('open');
     try {
       await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, reviewsettings: renderReviewSettings, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
