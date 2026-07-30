@@ -171,6 +171,50 @@
     $$('[data-period]').forEach(button => button.addEventListener('click', () => renderAnalytics(button.dataset.period)));
   }
 
+  async function renderSearchRankings(period = 'day', anchor = null) {
+    const today = todayKst();
+    anchor ||= period === 'day' ? today : period === 'month' ? today.slice(0, 7) : today.slice(0, 4);
+    loading();
+    const data = await api(`search-rankings?period=${encodeURIComponent(period)}&anchor=${encodeURIComponent(anchor)}`);
+    const maximum = Math.max(1, ...data.ranking.map(item => item.searches));
+    const difference = data.summary.searches - data.summary.previousSearches;
+    const change = data.summary.previousSearches
+      ? Math.round(difference / data.summary.previousSearches * 100)
+      : data.summary.searches ? 100 : 0;
+    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
+      `<button class="${period === value ? 'active' : ''}" data-ranking-period="${value}">${label}</button>`).join('')}</div>`;
+    const anchorInput = period === 'year'
+      ? `<input id="ranking-anchor" type="number" min="2020" max="2100" value="${escapeHtml(anchor)}" aria-label="검색 순위 조회 연도">`
+      : `<input id="ranking-anchor" type="${period === 'day' ? 'date' : 'month'}" value="${escapeHtml(anchor)}" aria-label="검색 순위 조회 기간">`;
+    const topRanking = data.ranking.slice(0, 10);
+    $('#admin-content').innerHTML = `${heading('SEARCH RANKING', '검색 순위 관리', '식당 검색어를 일·월·연도별로 집계하고 순위를 확인합니다.',
+      `${periodButtons}<div class="task-anchor">${anchorInput}</div>`)}
+      <div class="metrics">
+        <article class="metric"><span>전체 검색</span><strong>${data.summary.searches.toLocaleString('ko-KR')}</strong><small>선택 기간 검색 횟수</small></article>
+        <article class="metric"><span>검색어 종류</span><strong>${data.summary.terms.toLocaleString('ko-KR')}</strong><small>중복 제외 검색어</small></article>
+        <article class="metric"><span>회원 검색자</span><strong>${data.summary.members.toLocaleString('ko-KR')}</strong><small>로그인 회원 기준</small></article>
+        <article class="metric"><span>이전 기간 대비</span><strong>${difference > 0 ? '+' : ''}${difference.toLocaleString('ko-KR')}</strong><small class="${difference < 0 ? 'metric-danger' : ''}">${change > 0 ? '+' : ''}${change}%</small></article>
+      </div>
+      <article class="panel search-ranking-panel"><h2>상위 검색어 <small>TOP 10</small></h2>
+        ${topRanking.length ? `<div class="ranking-bars">${topRanking.map(item => `<div class="ranking-bar">
+          <b>${item.rank}</b><strong title="${escapeHtml(item.term)}">${escapeHtml(item.term)}</strong>
+          <div><i style="width:${Math.max(3, item.searches / maximum * 100)}%"></i></div>
+          <span>${item.searches.toLocaleString('ko-KR')}회</span>
+        </div>`).join('')}</div>` : '<div class="empty-admin">선택한 기간에 검색 기록이 없습니다.</div>'}
+      </article>
+      <article class="panel analytics-panel"><h2>검색 추이</h2>${data.trend.length ? lineChart(data.trend, [
+        { key: 'searches', label: '검색 횟수', color: '#f05a2a' },
+        { key: 'terms', label: '검색어 종류', color: '#5a62d6' }
+      ]) : '<div class="empty-admin">표시할 검색 추이가 없습니다.</div>'}</article>
+      <article class="panel analytics-panel"><h2>전체 검색 순위 <small>상위 50개</small></h2>
+        <div class="table-wrap">${data.ranking.length ? `<table><thead><tr><th>순위</th><th>검색어·식당명</th><th>검색 횟수</th><th>회원 검색자</th><th>점유율</th><th>최근 검색</th></tr></thead><tbody>${data.ranking.map(item =>
+          `<tr><td><span class="rank-number ${item.rank <= 3 ? 'top' : ''}">${item.rank}</span></td><td><strong>${escapeHtml(item.term)}</strong></td><td>${item.searches.toLocaleString('ko-KR')}회</td><td>${item.members.toLocaleString('ko-KR')}명</td><td>${data.summary.searches ? (item.searches / data.summary.searches * 100).toFixed(1) : '0.0'}%</td><td>${new Date(item.lastSearchedAt).toLocaleString('ko-KR')}</td></tr>`
+        ).join('')}</tbody></table>` : '<div class="empty-admin">검색 기록이 없습니다.</div>'}</div>
+      </article>`;
+    $$('[data-ranking-period]').forEach(button => button.addEventListener('click', () => renderSearchRankings(button.dataset.rankingPeriod)));
+    $('#ranking-anchor').addEventListener('change', event => renderSearchRankings(period, event.target.value));
+  }
+
   async function renderMembers(query = '', cursor = null) {
     loading();
     const data = await api(listPath('members', query, cursor));
@@ -322,7 +366,7 @@
     $$('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;

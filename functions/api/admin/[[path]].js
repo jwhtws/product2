@@ -243,6 +243,71 @@ export async function onRequest(context) {
       }))
     });
   }
+  if (method === 'GET' && path === 'search-rankings') {
+    const url = new URL(context.request.url);
+    const period = url.searchParams.get('period') || 'day';
+    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const anchor = url.searchParams.get('anchor') ||
+      (period === 'day' ? today : period === 'month' ? today.slice(0, 7) : today.slice(0, 4));
+    const range = taskRange(period, anchor);
+    if (!range) return json({ error: '올바른 검색 순위 조회 기간이 필요합니다.' }, 400);
+
+    const start = Date.parse(`${range.start}T00:00:00+09:00`);
+    const end = Date.parse(`${range.end}T00:00:00+09:00`);
+    const previousDate = new Date(`${range.start}T00:00:00Z`);
+    if (period === 'day') previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+    if (period === 'month') previousDate.setUTCMonth(previousDate.getUTCMonth() - 1);
+    if (period === 'year') previousDate.setUTCFullYear(previousDate.getUTCFullYear() - 1);
+    const previousAnchor = period === 'day' ? previousDate.toISOString().slice(0, 10) :
+      period === 'month' ? previousDate.toISOString().slice(0, 7) : previousDate.toISOString().slice(0, 4);
+    const previousRange = taskRange(period, previousAnchor);
+    const previousStart = Date.parse(`${previousRange.start}T00:00:00+09:00`);
+    const trendExpression = period === 'day'
+      ? "strftime('%H:00', datetime(created_at / 1000, 'unixepoch', '+9 hours'))"
+      : period === 'month'
+        ? "strftime('%Y-%m-%d', datetime(created_at / 1000, 'unixepoch', '+9 hours'))"
+        : "strftime('%Y-%m', datetime(created_at / 1000, 'unixepoch', '+9 hours'))";
+    const searchWhere = "event_type = 'search' AND TRIM(detail) != ''";
+    const [ranking, summary, previous, trend] = await Promise.all([
+      context.env.DB.prepare(`SELECT TRIM(detail) AS term, COUNT(*) AS searches,
+        COUNT(DISTINCT user_id) AS members, MAX(created_at) AS last_searched_at
+        FROM activity_events WHERE ${searchWhere} AND created_at >= ? AND created_at < ?
+        GROUP BY TRIM(detail) COLLATE NOCASE
+        ORDER BY searches DESC, last_searched_at DESC, term ASC LIMIT 50`).bind(start, end).all(),
+      context.env.DB.prepare(`SELECT COUNT(*) AS searches, COUNT(DISTINCT TRIM(detail) COLLATE NOCASE) AS terms,
+        COUNT(DISTINCT user_id) AS members FROM activity_events
+        WHERE ${searchWhere} AND created_at >= ? AND created_at < ?`).bind(start, end).first(),
+      context.env.DB.prepare(`SELECT COUNT(*) AS searches FROM activity_events
+        WHERE ${searchWhere} AND created_at >= ? AND created_at < ?`).bind(previousStart, start).first(),
+      context.env.DB.prepare(`SELECT ${trendExpression} AS bucket, COUNT(*) AS searches,
+        COUNT(DISTINCT TRIM(detail) COLLATE NOCASE) AS terms FROM activity_events
+        WHERE ${searchWhere} AND created_at >= ? AND created_at < ?
+        GROUP BY bucket ORDER BY bucket`).bind(start, end).all()
+    ]);
+    return json({
+      period,
+      anchor,
+      range,
+      summary: {
+        searches: Number(summary?.searches || 0),
+        terms: Number(summary?.terms || 0),
+        members: Number(summary?.members || 0),
+        previousSearches: Number(previous?.searches || 0)
+      },
+      ranking: ranking.results.map((item, index) => ({
+        rank: index + 1,
+        term: item.term,
+        searches: Number(item.searches),
+        members: Number(item.members),
+        lastSearchedAt: Number(item.last_searched_at)
+      })),
+      trend: trend.results.map(item => ({
+        bucket: item.bucket,
+        searches: Number(item.searches),
+        terms: Number(item.terms)
+      }))
+    });
+  }
   if (method === 'GET' && path === 'tasks') {
     const url = new URL(context.request.url);
     const period = url.searchParams.get('period') || 'day';
