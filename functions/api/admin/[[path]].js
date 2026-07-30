@@ -1,5 +1,5 @@
 import { body, clearCookie, clearFailures, createSession, json, rateLimit, recordFailure, requireAdmin, safeEqualText, sessionCookie } from '../../_lib/auth.js';
-import { likePattern, listParams, page, positiveId, taskRange } from '../../_lib/admin-query.js';
+import { likePattern, listParams, page, positiveId, taskRange, weekAnchor } from '../../_lib/admin-query.js';
 
 const memoryCache = new Map();
 
@@ -57,9 +57,20 @@ async function remoteJson(url) {
 
 const ANALYTICS_PERIODS = {
   day: { format: '%Y-%m-%d', amount: 30, unit: 'day', label: '일별' },
+  week: { format: '%Y-W%W', amount: 12, unit: 'week', label: '주별' },
   month: { format: '%Y-%m', amount: 12, unit: 'month', label: '월별' },
   year: { format: '%Y', amount: 5, unit: 'year', label: '연도별' }
 };
+
+function weekBucket(dateValue) {
+  const date = typeof dateValue === 'string' ? new Date(`${dateValue}T12:00:00Z`) : dateValue;
+  const year = date.getUTCFullYear();
+  const januaryFirst = new Date(Date.UTC(year, 0, 1));
+  const firstMonday = new Date(januaryFirst);
+  firstMonday.setUTCDate(1 + ((8 - januaryFirst.getUTCDay()) % 7));
+  const week = date < firstMonday ? 0 : Math.floor((date - firstMonday) / (7 * 86400000)) + 1;
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}
 
 function analyticsBuckets(period) {
   const config = ANALYTICS_PERIODS[period];
@@ -68,9 +79,11 @@ function analyticsBuckets(period) {
   for (let offset = config.amount - 1; offset >= 0; offset -= 1) {
     const date = new Date(now);
     if (config.unit === 'day') date.setUTCDate(date.getUTCDate() - offset);
+    if (config.unit === 'week') date.setUTCDate(date.getUTCDate() - offset * 7);
     if (config.unit === 'month') date.setUTCMonth(date.getUTCMonth() - offset, 1);
     if (config.unit === 'year') date.setUTCFullYear(date.getUTCFullYear() - offset, 0, 1);
     buckets.push(config.unit === 'day' ? date.toISOString().slice(0, 10) :
+      config.unit === 'week' ? weekBucket(date) :
       config.unit === 'month' ? date.toISOString().slice(0, 7) : date.toISOString().slice(0, 4));
   }
   return buckets;
@@ -210,7 +223,8 @@ export async function onRequest(context) {
     const config = ANALYTICS_PERIODS[period];
     const buckets = analyticsBuckets(period);
     const cutoff = period === 'day' ? Date.now() - 31 * 86400000 :
-      period === 'month' ? Date.now() - 370 * 86400000 : Date.now() - 6 * 366 * 86400000;
+      period === 'week' ? Date.now() - 13 * 7 * 86400000 :
+        period === 'month' ? Date.now() - 370 * 86400000 : Date.now() - 6 * 366 * 86400000;
     const expression = `strftime('${config.format}', datetime(created_at / 1000, 'unixepoch', '+9 hours'))`;
     const [members, reviews, activities, history] = await Promise.all([
       context.env.DB.prepare(`SELECT ${expression} AS bucket, COUNT(*) AS count FROM users
@@ -226,7 +240,8 @@ export async function onRequest(context) {
       new Map(result.results.map(item => [item.bucket, Number(item.count)])));
     const restaurantAdded = new Map(), restaurantRemoved = new Map();
     for (const entry of history?.entries || []) {
-      const bucket = period === 'day' ? entry.date : period === 'month' ? entry.date.slice(0, 7) : entry.date.slice(0, 4);
+      const bucket = period === 'day' ? entry.date : period === 'week' ? weekBucket(entry.date) :
+        period === 'month' ? entry.date.slice(0, 7) : entry.date.slice(0, 4);
       restaurantAdded.set(bucket, (restaurantAdded.get(bucket) || 0) + Number(entry.addedCount || 0));
       restaurantRemoved.set(bucket, (restaurantRemoved.get(bucket) || 0) + Number(entry.removedCount || 0));
     }
@@ -248,7 +263,8 @@ export async function onRequest(context) {
     const period = url.searchParams.get('period') || 'day';
     const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const anchor = url.searchParams.get('anchor') ||
-      (period === 'day' ? today : period === 'month' ? today.slice(0, 7) : today.slice(0, 4));
+      (period === 'day' ? today : period === 'week' ? weekAnchor(today) :
+        period === 'month' ? today.slice(0, 7) : today.slice(0, 4));
     const range = taskRange(period, anchor);
     if (!range) return json({ error: '올바른 검색 순위 조회 기간이 필요합니다.' }, 400);
 
@@ -256,15 +272,17 @@ export async function onRequest(context) {
     const end = Date.parse(`${range.end}T00:00:00+09:00`);
     const previousDate = new Date(`${range.start}T00:00:00Z`);
     if (period === 'day') previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+    if (period === 'week') previousDate.setUTCDate(previousDate.getUTCDate() - 7);
     if (period === 'month') previousDate.setUTCMonth(previousDate.getUTCMonth() - 1);
     if (period === 'year') previousDate.setUTCFullYear(previousDate.getUTCFullYear() - 1);
     const previousAnchor = period === 'day' ? previousDate.toISOString().slice(0, 10) :
+      period === 'week' ? weekAnchor(previousDate.toISOString().slice(0, 10)) :
       period === 'month' ? previousDate.toISOString().slice(0, 7) : previousDate.toISOString().slice(0, 4);
     const previousRange = taskRange(period, previousAnchor);
     const previousStart = Date.parse(`${previousRange.start}T00:00:00+09:00`);
     const trendExpression = period === 'day'
       ? "strftime('%H:00', datetime(created_at / 1000, 'unixepoch', '+9 hours'))"
-      : period === 'month'
+      : period === 'week' || period === 'month'
         ? "strftime('%Y-%m-%d', datetime(created_at / 1000, 'unixepoch', '+9 hours'))"
         : "strftime('%Y-%m', datetime(created_at / 1000, 'unixepoch', '+9 hours'))";
     const searchWhere = "event_type = 'search' AND TRIM(detail) != ''";

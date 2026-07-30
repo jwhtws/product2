@@ -67,10 +67,19 @@
   const todayKst = () => new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
+  const weekAnchorKst = dateValue => {
+    const date = new Date(`${dateValue}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+    const year = date.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(year, 0, 1));
+    const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+    return `${year}-W${String(week).padStart(2, '0')}`;
+  };
 
   async function renderTasks(period = 'day', anchor = null) {
     const today = todayKst();
-    anchor ||= period === 'day' ? today : period === 'month' ? today.slice(0, 7) : today.slice(0, 4);
+    anchor ||= period === 'day' ? today : period === 'week' ? weekAnchorKst(today) :
+      period === 'month' ? today.slice(0, 7) : today.slice(0, 4);
     loading();
     const data = await api(`tasks?period=${encodeURIComponent(period)}&anchor=${encodeURIComponent(anchor)}`);
     const groups = new Map();
@@ -78,13 +87,13 @@
       if (!groups.has(task.due_date)) groups.set(task.due_date, []);
       groups.get(task.due_date).push(task);
     });
-    const dueDate = period === 'day' ? anchor : period === 'month' ? `${anchor}-01` : `${anchor}-01-01`;
-    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
+    const dueDate = data.range.start;
+    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
       `<button class="${period === value ? 'active' : ''}" data-task-period="${value}">${label}</button>`).join('')}</div>`;
     const anchorInput = period === 'year'
       ? `<input id="task-anchor" type="number" min="2020" max="2100" value="${escapeHtml(anchor)}" aria-label="조회 연도">`
-      : `<input id="task-anchor" type="${period === 'day' ? 'date' : 'month'}" value="${escapeHtml(anchor)}" aria-label="조회 기간">`;
-    $('#admin-content').innerHTML = `${heading('PLANNER', '해야 할 일', '업무와 메모를 일·월·연도별로 정리합니다.', `${periodButtons}<div class="task-anchor">${anchorInput}</div>`)}
+      : `<input id="task-anchor" type="${period === 'day' ? 'date' : period === 'week' ? 'week' : 'month'}" value="${escapeHtml(anchor)}" aria-label="조회 기간">`;
+    $('#admin-content').innerHTML = `${heading('PLANNER', '해야 할 일', '업무와 메모를 일·주·월·연도별로 정리합니다.', `${periodButtons}<div class="task-anchor">${anchorInput}</div>`)}
       <article class="panel task-compose"><h2>새 할 일</h2><form id="task-form">
         <input name="title" maxlength="100" required placeholder="해야 할 일 제목">
         <textarea name="memo" maxlength="2000" placeholder="메모와 세부 내용을 입력하세요"></textarea>
@@ -148,7 +157,7 @@
       restaurantAdded: result.restaurantAdded + point.restaurantAdded,
       restaurantRemoved: result.restaurantRemoved + point.restaurantRemoved
     }), { members: 0, reviews: 0, activities: 0, restaurantAdded: 0, restaurantRemoved: 0 });
-    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
+    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
       `<button class="${period === value ? 'active' : ''}" data-period="${value}">${label}</button>`).join('')}</div>`;
     $('#admin-content').innerHTML = `${heading('ANALYTICS', '데이터 분석', '회원, 리뷰, 활동과 식당 변화를 기간별로 확인합니다.', periodButtons)}
       <div class="metrics">
@@ -173,7 +182,8 @@
 
   async function renderSearchRankings(period = 'day', anchor = null) {
     const today = todayKst();
-    anchor ||= period === 'day' ? today : period === 'month' ? today.slice(0, 7) : today.slice(0, 4);
+    anchor ||= period === 'day' ? today : period === 'week' ? weekAnchorKst(today) :
+      period === 'month' ? today.slice(0, 7) : today.slice(0, 4);
     loading();
     const data = await api(`search-rankings?period=${encodeURIComponent(period)}&anchor=${encodeURIComponent(anchor)}`);
     const maximum = Math.max(1, ...data.ranking.map(item => item.searches));
@@ -181,13 +191,13 @@
     const change = data.summary.previousSearches
       ? Math.round(difference / data.summary.previousSearches * 100)
       : data.summary.searches ? 100 : 0;
-    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
+    const periodButtons = `<div class="period-tabs">${[['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별']].map(([value, label]) =>
       `<button class="${period === value ? 'active' : ''}" data-ranking-period="${value}">${label}</button>`).join('')}</div>`;
     const anchorInput = period === 'year'
       ? `<input id="ranking-anchor" type="number" min="2020" max="2100" value="${escapeHtml(anchor)}" aria-label="검색 순위 조회 연도">`
-      : `<input id="ranking-anchor" type="${period === 'day' ? 'date' : 'month'}" value="${escapeHtml(anchor)}" aria-label="검색 순위 조회 기간">`;
+      : `<input id="ranking-anchor" type="${period === 'day' ? 'date' : period === 'week' ? 'week' : 'month'}" value="${escapeHtml(anchor)}" aria-label="검색 순위 조회 기간">`;
     const topRanking = data.ranking.slice(0, 10);
-    $('#admin-content').innerHTML = `${heading('SEARCH RANKING', '검색 순위 관리', '식당 검색어를 일·월·연도별로 집계하고 순위를 확인합니다.',
+    $('#admin-content').innerHTML = `${heading('SEARCH RANKING', '검색 순위 관리', '식당 검색어를 일·주·월·연도별로 집계하고 순위를 확인합니다.',
       `${periodButtons}<div class="task-anchor">${anchorInput}</div>`)}
       <div class="metrics">
         <article class="metric"><span>전체 검색</span><strong>${data.summary.searches.toLocaleString('ko-KR')}</strong><small>선택 기간 검색 횟수</small></article>

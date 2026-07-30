@@ -34,7 +34,22 @@ export function positiveId(value) {
 }
 
 export function taskRange(period, anchor) {
-  if (!['day', 'month', 'year'].includes(period)) return null;
+  if (!['day', 'week', 'month', 'year'].includes(period)) return null;
+  if (period === 'week') {
+    const match = /^(\d{4})-W(\d{2})$/.exec(anchor);
+    if (!match) return null;
+    const year = Number(match[1]), week = Number(match[2]);
+    if (week < 1 || week > 53) return null;
+    const januaryFourth = new Date(Date.UTC(year, 0, 4));
+    const monday = new Date(januaryFourth);
+    monday.setUTCDate(januaryFourth.getUTCDate() - (januaryFourth.getUTCDay() || 7) + 1 + (week - 1) * 7);
+    const thursday = new Date(monday);
+    thursday.setUTCDate(monday.getUTCDate() + 3);
+    if (thursday.getUTCFullYear() !== year) return null;
+    const end = new Date(monday);
+    end.setUTCDate(monday.getUTCDate() + 7);
+    return { start: monday.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+  }
   const pattern = period === 'day' ? /^\d{4}-\d{2}-\d{2}$/ : period === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}$/;
   if (!pattern.test(anchor)) return null;
   const start = period === 'day' ? anchor : period === 'month' ? `${anchor}-01` : `${anchor}-01-01`;
@@ -44,4 +59,14 @@ export function taskRange(period, anchor) {
   if (period === 'month') date.setUTCMonth(date.getUTCMonth() + 1);
   if (period === 'year') date.setUTCFullYear(date.getUTCFullYear() + 1);
   return { start, end: date.toISOString().slice(0, 10) };
+}
+
+export function weekAnchor(dateValue) {
+  const date = new Date(`${dateValue}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dateValue) return null;
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+  const year = date.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${year}-W${String(week).padStart(2, '0')}`;
 }
