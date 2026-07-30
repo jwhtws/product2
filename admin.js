@@ -317,6 +317,38 @@
     }));
   }
 
+  async function renderReviewSettings() {
+    loading();
+    const data = await api('review-settings');
+    const settings = data.settings;
+    $('#admin-content').innerHTML = `${heading('REVIEW POLICY', '리뷰 제한 설정', '회원 리뷰 등록 제한을 변경합니다. 저장 즉시 서비스에 적용됩니다.')}
+      <article class="panel settings-panel">
+        <form id="review-settings-form" class="settings-form">
+          <label><span>회원당 하루 전체 리뷰 제한</span><input name="daily_review_limit" type="number" min="1" max="100" value="${settings.daily_review_limit}" required><small>모든 식당에 작성한 리뷰를 합산합니다.</small></label>
+          <label><span>같은 식당 하루 리뷰 제한</span><input name="restaurant_daily_review_limit" type="number" min="1" max="20" value="${settings.restaurant_daily_review_limit}" required><small>삭제한 리뷰도 당일 작성 횟수에 포함됩니다.</small></label>
+          <label class="setting-switch"><span><strong>동일 내용 중복 차단</strong><small>같은 식당에 같은 문구를 다시 등록하지 못하게 합니다.</small></span><input name="duplicate_review_block" type="checkbox" ${settings.duplicate_review_block ? 'checked' : ''}></label>
+          <button type="submit">설정 저장</button>
+        </form>
+      </article>`;
+    $('#review-settings-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget, button = form.querySelector('button[type="submit"]');
+      button.disabled = true; button.textContent = '저장 중…';
+      try {
+        await api('review-settings', { method: 'PUT', body: JSON.stringify({
+          daily_review_limit: Number(form.daily_review_limit.value),
+          restaurant_daily_review_limit: Number(form.restaurant_daily_review_limit.value),
+          duplicate_review_block: form.duplicate_review_block.checked
+        }) });
+        toast('리뷰 제한 설정을 저장했습니다.');
+        renderReviewSettings();
+      } catch (error) {
+        toast(error.message);
+        button.disabled = false; button.textContent = '설정 저장';
+      }
+    });
+  }
+
   async function renderRestaurants() {
     loading();
     const sync = await api('restaurant-sync');
@@ -422,7 +454,7 @@
     $$('[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, reviewsettings: renderReviewSettings, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;

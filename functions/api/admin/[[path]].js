@@ -115,6 +115,40 @@ export async function onRequest(context) {
   if (!session?.admin) return json({ error: '관리자 로그인이 필요합니다.' }, 401);
   if (method === 'GET' && path === 'session') return json({ authenticated: true });
 
+  if (method === 'GET' && path === 'review-settings') {
+    const result = await context.env.DB.prepare(
+      `SELECT setting_key, setting_value FROM service_settings
+       WHERE setting_key IN ('daily_review_limit', 'restaurant_daily_review_limit', 'duplicate_review_block')`
+    ).all();
+    const values = Object.fromEntries((result.results || []).map(row => [row.setting_key, row.setting_value]));
+    return json({ settings: {
+      daily_review_limit: Math.max(1, Number(values.daily_review_limit) || 5),
+      restaurant_daily_review_limit: Math.max(1, Number(values.restaurant_daily_review_limit) || 1),
+      duplicate_review_block: values.duplicate_review_block !== '0'
+    } });
+  }
+  if (method === 'PUT' && path === 'review-settings') {
+    const data = await body(context.request);
+    const dailyLimit = Math.min(100, Math.max(1, Math.trunc(Number(data.daily_review_limit) || 0)));
+    const restaurantLimit = Math.min(20, Math.max(1, Math.trunc(Number(data.restaurant_daily_review_limit) || 0)));
+    if (restaurantLimit > dailyLimit) return json({ error: '식당별 하루 제한은 전체 하루 제한보다 클 수 없습니다.' }, 400);
+    const duplicateBlock = data.duplicate_review_block !== false;
+    const now = Date.now();
+    await context.env.DB.batch([
+      context.env.DB.prepare(`INSERT INTO service_settings (setting_key, setting_value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at`)
+        .bind('daily_review_limit', String(dailyLimit), now),
+      context.env.DB.prepare(`INSERT INTO service_settings (setting_key, setting_value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at`)
+        .bind('restaurant_daily_review_limit', String(restaurantLimit), now),
+      context.env.DB.prepare(`INSERT INTO service_settings (setting_key, setting_value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at`)
+        .bind('duplicate_review_block', duplicateBlock ? '1' : '0', now)
+    ]);
+    await audit(context, '리뷰 제한 설정 변경', `하루 ${dailyLimit}개 · 식당별 ${restaurantLimit}개 · 중복 차단 ${duplicateBlock ? '사용' : '해제'}`);
+    return json({ ok: true });
+  }
+
   if (method === 'GET' && path === 'dashboard') {
     const [members, reviews, recent, saved, activities] = await context.env.DB.batch([
       context.env.DB.prepare('SELECT COUNT(*) AS count FROM users'),
