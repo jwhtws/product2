@@ -391,7 +391,7 @@
       .map(region => `<option value="${escapeHtml(region)}" ${regionFilter === region ? 'selected' : ''}>${escapeHtml(region)}</option>`).join('');
     $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '진행 중·종료 팝업을 상태별로 나누어 확인하고 관리합니다.',
       `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"></div>`)}
-      <div class="period-tabs popup-status-tabs">${statusTabs}</div>
+      <div class="popup-filter-toolbar"><div class="period-tabs popup-status-tabs">${statusTabs}</div><div class="period-tabs popup-sort-tabs">${sortOptions}</div><select id="popup-region-filter" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select></div>
       <div class="metrics">
         <article class="metric"><span>전체 팝업</span><strong>${allRows.length.toLocaleString('ko-KR')}</strong><small>product1 공용 원본</small></article>
         <article class="metric"><span>진행 중</span><strong>${active.toLocaleString('ko-KR')}</strong><small>오늘 운영 중</small></article>
@@ -404,7 +404,7 @@
         <div class="health-item"><span>자동 갱신</span><b>${data.schedule.label}</b></div>
         <div class="health-item"><span>최근 작업</span><b class="status ${data.latest?.conclusion === 'failure' ? 'warn' : ''}">${running ? '실행 중' : data.latest?.conclusion === 'success' ? '성공' : data.latest?.conclusion || '기록 없음'}</b></div>
       </div><div class="sync-actions"><button id="run-popup-sync" class="small-button" ${running || !data.canRun ? 'disabled' : ''}>${running ? '갱신 실행 중' : '지금 갱신 실행'}</button>${data.latest?.url ? `<a href="${escapeHtml(data.latest.url)}" target="_blank" rel="noreferrer">실행 로그 보기 ↗</a>` : ''}</div></article>
-      <div class="popup-list-toolbar"><span>팝업 장소 정렬</span><div class="period-tabs">${sortOptions}</div><select id="popup-region-filter" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select></div><div class="table-wrap">${sortedRows.length ? `<table><thead><tr><th>팝업</th><th>장소</th><th>지역</th><th>D-day</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${sortedRows.map(item =>
+      <div class="table-wrap">${sortedRows.length ? `<table><thead><tr><th>팝업</th><th>장소</th><th>지역</th><th>D-day</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${sortedRows.map(item =>
         `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.address)}</small></td><td>${escapeHtml(item.region || '—')}</td><td>${dayDiff(item.startDate) > 0 ? `D-${dayDiff(item.startDate)}` : dayDiff(item.startDate) === 0 ? 'D-day' : `D+${Math.abs(dayDiff(item.startDate))}`}</td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${phase(item) === '종료' ? 'warn' : ''}">${phase(item)}</span></td><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.sourceName || '공식 출처')} ↗</a></td></tr>`
       ).join('')}</tbody></table>` : `<div class="empty-admin">${statusFilter === 'active' ? '현재 진행 중인 푸드 팝업이 없습니다.' : statusFilter === 'ended' ? '종료된 푸드 팝업이 없습니다.' : '조건에 맞는 푸드 팝업이 없습니다.'}</div>`}</div>`;
     $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, statusFilter, sortKey, regionFilter));
