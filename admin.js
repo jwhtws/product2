@@ -4,7 +4,10 @@
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[character]));
-  let currentView = 'dashboard';
+  const adminViews = new Set(['dashboard', 'tasks', 'analytics', 'searchrankings', 'useranalytics', 'members', 'reviews', 'reviewsettings', 'userdata', 'activities', 'restaurants', 'foodpopups', 'logs']);
+  const historyStateKey = 'mukdangAdminView';
+  let currentView = adminViews.has(history.state?.[historyStateKey]) ? history.state[historyStateKey] : 'dashboard';
+  let historyReady = false;
   let restaurantMeta = { total: 0, updatedAt: null, regions: [] };
   let validationReport = null;
 
@@ -40,7 +43,7 @@
     <button class="${active === 'reviewsettings' ? 'active' : ''}" data-review-view="reviewsettings">리뷰 제한 설정</button>
   </div>`;
   const bindReviewTabs = () => $$('[data-review-view]').forEach(button =>
-    button.addEventListener('click', () => render(button.dataset.reviewView)));
+    button.addEventListener('click', () => navigate(button.dataset.reviewView)));
 
   function loading() {
     $('#admin-content').innerHTML = '<div class="empty-admin">서버 데이터를 불러오는 중입니다.</div>';
@@ -508,6 +511,28 @@
     }
   }
 
+  function prepareHistory() {
+    if (historyReady) return;
+    historyReady = true;
+    const savedView = history.state?.[historyStateKey];
+    if (adminViews.has(savedView)) {
+      currentView = savedView;
+      return;
+    }
+    // 첫 뒤로가기가 관리자 화면 밖으로 이탈하지 않도록 현재 화면을 한 단계 확보한다.
+    history.replaceState({ ...history.state, [historyStateKey]: 'dashboard' }, '');
+    history.pushState({ [historyStateKey]: 'dashboard' }, '');
+    currentView = 'dashboard';
+  }
+
+  function navigate(view) {
+    const nextView = adminViews.has(view) ? view : 'dashboard';
+    if (nextView !== currentView) {
+      history.pushState({ [historyStateKey]: nextView }, '');
+    }
+    return render(nextView);
+  }
+
   function showLogin() {
     $('#admin-login').hidden = false;
     $('#admin-app').hidden = true;
@@ -517,6 +542,7 @@
     sessionStorage.setItem('mukdang_admin_active', '1');
     $('#admin-login').hidden = true;
     $('#admin-app').hidden = false;
+    prepareHistory();
     await render();
   }
 
@@ -539,7 +565,12 @@
     showLogin();
   });
   $('#menu-toggle').addEventListener('click', () => $('.sidebar').classList.toggle('open'));
-  $$('[data-view]').forEach(button => button.addEventListener('click', () => render(button.dataset.view)));
+  $$('[data-view]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.view)));
+  window.addEventListener('popstate', event => {
+    if ($('#admin-app').hidden) return;
+    const previousView = event.state?.[historyStateKey];
+    render(adminViews.has(previousView) ? previousView : 'dashboard');
+  });
   $('#today').textContent = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
   Promise.all([
