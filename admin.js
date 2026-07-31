@@ -520,7 +520,7 @@
       return;
     }
     // 첫 뒤로가기가 관리자 화면 밖으로 이탈하지 않도록 현재 화면을 한 단계 확보한다.
-    history.replaceState({ ...history.state, [historyStateKey]: 'dashboard' }, '');
+    history.replaceState({ ...history.state, [historyStateKey]: 'dashboard', guard: true }, '');
     history.pushState({ [historyStateKey]: 'dashboard' }, '');
     currentView = 'dashboard';
   }
@@ -569,7 +569,10 @@
   window.addEventListener('popstate', event => {
     if ($('#admin-app').hidden) return;
     const previousView = event.state?.[historyStateKey];
-    render(adminViews.has(previousView) ? previousView : 'dashboard');
+    if (adminViews.has(previousView) && !event.state?.guard) return render(previousView);
+    // 기록의 첫 지점에서도 브라우저가 관리자 화면 밖으로 빠져나가지 않게 한다.
+    history.pushState({ [historyStateKey]: currentView, guard: true }, '');
+    render(currentView);
   });
   $('#today').textContent = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
