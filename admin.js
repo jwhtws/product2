@@ -391,7 +391,7 @@
       .map(region => `<option value="${escapeHtml(region)}" ${regionFilter === region ? 'selected' : ''}>${escapeHtml(region)}</option>`).join('');
     $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '진행 중·종료 팝업을 상태별로 나누어 확인하고 관리합니다.',
       `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"></div>`)}
-      <div class="popup-filter-toolbar"><div class="period-tabs popup-status-tabs">${statusTabs}</div><div class="period-tabs popup-sort-tabs">${sortOptions}</div><select id="popup-region-filter" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select></div>
+      <div class="popup-filter-toolbar"><div class="period-tabs popup-status-tabs">${statusTabs}</div><div class="period-tabs popup-sort-tabs">${sortOptions}</div><select id="popup-region-filter" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select><button type="button" class="filter-reset" id="popup-filter-reset">초기화</button></div>
       <div class="metrics">
         <article class="metric"><span>전체 팝업</span><strong>${allRows.length.toLocaleString('ko-KR')}</strong><small>product1 공용 원본</small></article>
         <article class="metric"><span>진행 중</span><strong>${active.toLocaleString('ko-KR')}</strong><small>오늘 운영 중</small></article>
@@ -410,6 +410,7 @@
     $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, statusFilter, sortKey, regionFilter));
     $$('[data-popup-sort]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, statusFilter, button.dataset.popupSort, regionFilter)));
     $('#popup-region-filter').addEventListener('change', event => renderFoodPopups(query, statusFilter, sortKey, event.target.value));
+    $('#popup-filter-reset').addEventListener('click', () => renderFoodPopups('', 'active', 'ddaySoon', ''));
     $$('[data-popup-status]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, button.dataset.popupStatus, sortKey, regionFilter)));
     $('#run-popup-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 푸드 팝업 데이터를 지금 다시 수집할까요?')) return;
@@ -459,8 +460,9 @@
           <div class="history-detail empty-admin">펼치면 상세 목록을 불러옵니다.</div>
         </details>`).join('')}</div>` : '<div class="empty-admin">현재 데이터를 기준으로 설정했습니다. 다음 일일 갱신부터 추가·제거된 식당이 날짜별로 기록됩니다.</div>'}
       </article>
-      <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="restaurant-list-toolbar"><span>식당 리스트 정렬</span><select id="restaurant-sort" aria-label="식당 데이터 정렬">${restaurantSortOptions}</select></div><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${sortedRegions.map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
+      <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="restaurant-list-toolbar"><span>식당 리스트 정렬</span><div><select id="restaurant-sort" aria-label="식당 데이터 정렬">${restaurantSortOptions}</select><button type="button" class="filter-reset" id="restaurant-sort-reset">초기화</button></div></div><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${sortedRegions.map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
     $('#restaurant-sort').addEventListener('change', event => renderRestaurants(event.target.value));
+    $('#restaurant-sort-reset').addEventListener('click', () => renderRestaurants('date'));
     $('#run-restaurant-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 공공데이터를 다시 받아 개업·폐업 정보를 지금 갱신할까요?')) return;
       event.currentTarget.disabled = true;
