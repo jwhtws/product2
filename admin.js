@@ -453,13 +453,13 @@
           <div class="health-item"><span>시작일 누락</span><b>${(validation.missingPermitDateRows || 0).toLocaleString('ko-KR')}건</b></div>
         </div></article>
       </div>
-      <article class="panel restaurant-history"><h2>일자별 개업·폐업 변경 이력 <small>최근 90일</small></h2><div class="toolbar"><select id="restaurant-sort" aria-label="식당 데이터 정렬">${restaurantSortOptions}</select></div>
+      <article class="panel restaurant-history"><h2>일자별 개업·폐업 변경 이력 <small>최근 90일</small></h2>
         ${sortedHistory.length ? `<div class="history-list">${sortedHistory.map(entry => `<details data-history-date="${escapeHtml(entry.date)}">
           <summary><strong>${escapeHtml(entry.date)}</strong><span class="history-added">추가 ${entry.addedCount.toLocaleString('ko-KR')}곳</span><span class="history-removed">제거 ${entry.removedCount.toLocaleString('ko-KR')}곳</span><span>영업 중 ${entry.total.toLocaleString('ko-KR')}곳</span></summary>
           <div class="history-detail empty-admin">펼치면 상세 목록을 불러옵니다.</div>
         </details>`).join('')}</div>` : '<div class="empty-admin">현재 데이터를 기준으로 설정했습니다. 다음 일일 갱신부터 추가·제거된 식당이 날짜별로 기록됩니다.</div>'}
       </article>
-      <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${sortedRegions.map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
+      <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="restaurant-list-toolbar"><span>식당 리스트 정렬</span><select id="restaurant-sort" aria-label="식당 데이터 정렬">${restaurantSortOptions}</select></div><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${sortedRegions.map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
     $('#restaurant-sort').addEventListener('change', event => renderRestaurants(event.target.value));
     $('#run-restaurant-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 공공데이터를 다시 받아 개업·폐업 정보를 지금 갱신할까요?')) return;
