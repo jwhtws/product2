@@ -361,19 +361,24 @@
     });
   }
 
-  async function renderFoodPopups(query = '') {
+  async function renderFoodPopups(query = '', statusFilter = 'active') {
     loading();
     const data = await api('food-popup-sync');
     const today = todayKst();
     const allRows = data.popups || [];
     const rows = allRows.filter(item => !query || `${item.name} ${item.venue} ${item.address}`.toLocaleLowerCase('ko-KR').includes(query.toLocaleLowerCase('ko-KR')));
     const phase = item => item.startDate > today ? '예정' : item.endDate < today ? '종료' : '진행 중';
+    const statusKey = item => item.startDate > today ? 'upcoming' : item.endDate < today ? 'ended' : 'active';
+    const visibleRows = rows.filter(item => statusFilter === 'all' || statusKey(item) === statusFilter);
     const active = allRows.filter(item => item.startDate <= today && item.endDate >= today).length;
     const upcoming = allRows.filter(item => item.startDate > today).length;
     const ended = allRows.filter(item => item.endDate < today).length;
     const running = data.latest && ['queued', 'in_progress', 'waiting', 'pending'].includes(data.latest.status);
-    $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '먹당 실제 페이지와 같은 공식 팝업 원본을 확인하고 갱신합니다.',
+    const statusTabs = [['active', '진행 중'], ['ended', '종료'], ['upcoming', '오픈 예정'], ['all', '전체']]
+      .map(([value, label]) => `<button class="${statusFilter === value ? 'active' : ''}" data-popup-status="${value}">${label}</button>`).join('');
+    $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '진행 중·종료 팝업을 상태별로 나누어 확인하고 관리합니다.',
       `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"></div>`)}
+      <div class="period-tabs popup-status-tabs">${statusTabs}</div>
       <div class="metrics">
         <article class="metric"><span>전체 팝업</span><strong>${allRows.length.toLocaleString('ko-KR')}</strong><small>product1 공용 원본</small></article>
         <article class="metric"><span>진행 중</span><strong>${active.toLocaleString('ko-KR')}</strong><small>오늘 운영 중</small></article>
@@ -386,10 +391,11 @@
         <div class="health-item"><span>자동 갱신</span><b>${data.schedule.label}</b></div>
         <div class="health-item"><span>최근 작업</span><b class="status ${data.latest?.conclusion === 'failure' ? 'warn' : ''}">${running ? '실행 중' : data.latest?.conclusion === 'success' ? '성공' : data.latest?.conclusion || '기록 없음'}</b></div>
       </div><div class="sync-actions"><button id="run-popup-sync" class="small-button" ${running || !data.canRun ? 'disabled' : ''}>${running ? '갱신 실행 중' : '지금 갱신 실행'}</button>${data.latest?.url ? `<a href="${escapeHtml(data.latest.url)}" target="_blank" rel="noreferrer">실행 로그 보기 ↗</a>` : ''}</div></article>
-      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>팝업</th><th>장소</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${rows.map(item =>
+      <div class="table-wrap">${visibleRows.length ? `<table><thead><tr><th>팝업</th><th>장소</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${visibleRows.map(item =>
         `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.address)}</small></td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${phase(item) === '종료' ? 'warn' : ''}">${phase(item)}</span></td><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.sourceName || '공식 출처')} ↗</a></td></tr>`
-      ).join('')}</tbody></table>` : '<div class="empty-admin">조건에 맞는 푸드 팝업이 없습니다.</div>'}</div>`;
-    $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value));
+      ).join('')}</tbody></table>` : `<div class="empty-admin">${statusFilter === 'active' ? '현재 진행 중인 푸드 팝업이 없습니다.' : statusFilter === 'ended' ? '종료된 푸드 팝업이 없습니다.' : '조건에 맞는 푸드 팝업이 없습니다.'}</div>`}</div>`;
+    $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, statusFilter));
+    $$('[data-popup-status]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, button.dataset.popupStatus)));
     $('#run-popup-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 푸드 팝업 데이터를 지금 다시 수집할까요?')) return;
       event.currentTarget.disabled = true;
