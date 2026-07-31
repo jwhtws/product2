@@ -361,7 +361,7 @@
     });
   }
 
-  async function renderFoodPopups(query = '', statusFilter = 'active') {
+  async function renderFoodPopups(query = '', statusFilter = 'active', sortKey = 'date') {
     loading();
     const data = await api('food-popup-sync');
     const today = todayKst();
@@ -370,14 +370,21 @@
     const phase = item => item.startDate > today ? '예정' : item.endDate < today ? '종료' : '진행 중';
     const statusKey = item => item.startDate > today ? 'upcoming' : item.endDate < today ? 'ended' : 'active';
     const visibleRows = rows.filter(item => statusFilter === 'all' || statusKey(item) === statusFilter);
+    const sortedRows = [...visibleRows].sort((left, right) => {
+      const leftValue = sortKey === 'name' ? left.name : sortKey === 'region' ? left.region : left.startDate;
+      const rightValue = sortKey === 'name' ? right.name : sortKey === 'region' ? right.region : right.startDate;
+      return String(leftValue || '').localeCompare(String(rightValue || ''), 'ko-KR') || String(left.name).localeCompare(String(right.name), 'ko-KR');
+    });
     const active = allRows.filter(item => item.startDate <= today && item.endDate >= today).length;
     const upcoming = allRows.filter(item => item.startDate > today).length;
     const ended = allRows.filter(item => item.endDate < today).length;
     const running = data.latest && ['queued', 'in_progress', 'waiting', 'pending'].includes(data.latest.status);
     const statusTabs = [['active', '진행 중'], ['ended', '종료'], ['upcoming', '오픈 예정'], ['all', '전체']]
       .map(([value, label]) => `<button class="${statusFilter === value ? 'active' : ''}" data-popup-status="${value}">${label}</button>`).join('');
+    const sortOptions = [['date', '날짜순'], ['region', '지역순'], ['name', '이름순']]
+      .map(([value, label]) => `<option value="${value}" ${sortKey === value ? 'selected' : ''}>${label}</option>`).join('');
     $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '진행 중·종료 팝업을 상태별로 나누어 확인하고 관리합니다.',
-      `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"></div>`)}
+      `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"><select id="popup-sort" aria-label="푸드 팝업 정렬">${sortOptions}</select></div>`)}
       <div class="period-tabs popup-status-tabs">${statusTabs}</div>
       <div class="metrics">
         <article class="metric"><span>전체 팝업</span><strong>${allRows.length.toLocaleString('ko-KR')}</strong><small>product1 공용 원본</small></article>
@@ -391,11 +398,12 @@
         <div class="health-item"><span>자동 갱신</span><b>${data.schedule.label}</b></div>
         <div class="health-item"><span>최근 작업</span><b class="status ${data.latest?.conclusion === 'failure' ? 'warn' : ''}">${running ? '실행 중' : data.latest?.conclusion === 'success' ? '성공' : data.latest?.conclusion || '기록 없음'}</b></div>
       </div><div class="sync-actions"><button id="run-popup-sync" class="small-button" ${running || !data.canRun ? 'disabled' : ''}>${running ? '갱신 실행 중' : '지금 갱신 실행'}</button>${data.latest?.url ? `<a href="${escapeHtml(data.latest.url)}" target="_blank" rel="noreferrer">실행 로그 보기 ↗</a>` : ''}</div></article>
-      <div class="table-wrap">${visibleRows.length ? `<table><thead><tr><th>팝업</th><th>장소</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${visibleRows.map(item =>
+      <div class="table-wrap">${sortedRows.length ? `<table><thead><tr><th>팝업</th><th>장소</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${sortedRows.map(item =>
         `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.address)}</small></td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${phase(item) === '종료' ? 'warn' : ''}">${phase(item)}</span></td><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.sourceName || '공식 출처')} ↗</a></td></tr>`
       ).join('')}</tbody></table>` : `<div class="empty-admin">${statusFilter === 'active' ? '현재 진행 중인 푸드 팝업이 없습니다.' : statusFilter === 'ended' ? '종료된 푸드 팝업이 없습니다.' : '조건에 맞는 푸드 팝업이 없습니다.'}</div>`}</div>`;
-    $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, statusFilter));
-    $$('[data-popup-status]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, button.dataset.popupStatus)));
+    $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, statusFilter, sortKey));
+    $('#popup-sort').addEventListener('change', event => renderFoodPopups(query, statusFilter, event.target.value));
+    $$('[data-popup-status]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, button.dataset.popupStatus, sortKey)));
     $('#run-popup-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 푸드 팝업 데이터를 지금 다시 수집할까요?')) return;
       event.currentTarget.disabled = true;
@@ -404,7 +412,7 @@
     });
   }
 
-  async function renderRestaurants() {
+  async function renderRestaurants(sortKey = 'date') {
     loading();
     const sync = await api('restaurant-sync');
     const validation = sync.validation?.stats || validationReport?.stats || {};
@@ -415,6 +423,14 @@
     const running = latest && ['queued', 'in_progress', 'waiting', 'pending'].includes(latest.status);
     const succeeded = latest?.conclusion === 'success';
     const resultLabel = running ? '실행 중' : succeeded ? '성공' : latest?.conclusion ? '실패' : '기록 없음';
+    const sortedHistory = [...history].sort((left, right) => sortKey === 'name'
+      ? String(left.date).localeCompare(String(right.date), 'ko-KR')
+      : String(right.date).localeCompare(String(left.date), 'ko-KR'));
+    const sortedRegions = [...(manifest.regions || [])].sort((left, right) => sortKey === 'name' || sortKey === 'region'
+      ? String(left.name).localeCompare(String(right.name), 'ko-KR')
+      : Number(right.count || 0) - Number(left.count || 0));
+    const restaurantSortOptions = [['date', '날짜순'], ['region', '지역순'], ['name', '이름순']]
+      .map(([value, label]) => `<option value="${value}" ${sortKey === value ? 'selected' : ''}>${label}</option>`).join('');
     $('#admin-content').innerHTML = `${heading('DATA', '식당 데이터', '공공데이터와 검색 인덱스 상태입니다.')}
       <div class="metrics"><article class="metric"><span>영업 중 식당</span><strong>${(manifest.total || 0).toLocaleString('ko-KR')}</strong><small>공식 인허가 기준</small></article><article class="metric"><span>최근 개업 반영</span><strong>${refresh ? refresh.opened.toLocaleString('ko-KR') : '—'}</strong><small>${refresh?.updatedAt ? new Date(refresh.updatedAt).toLocaleDateString('ko-KR') : '결과 보고서 연결 대기'}</small></article><article class="metric"><span>최근 폐업·제외</span><strong>${refresh ? refresh.closed.toLocaleString('ko-KR') : '—'}</strong><small>${refresh ? '공식 데이터 비교' : '결과 보고서 연결 대기'}</small></article><article class="metric"><span>자동 갱신</span><strong>${resultLabel}</strong><small>${sync.schedule.label}</small></article></div>
       <div class="dashboard-grid">
@@ -430,13 +446,14 @@
           <div class="health-item"><span>시작일 누락</span><b>${(validation.missingPermitDateRows || 0).toLocaleString('ko-KR')}건</b></div>
         </div></article>
       </div>
-      <article class="panel restaurant-history"><h2>일자별 개업·폐업 변경 이력 <small>최근 90일</small></h2>
-        ${history.length ? `<div class="history-list">${history.map(entry => `<details data-history-date="${escapeHtml(entry.date)}">
+      <article class="panel restaurant-history"><h2>일자별 개업·폐업 변경 이력 <small>최근 90일</small></h2><div class="toolbar"><select id="restaurant-sort" aria-label="식당 데이터 정렬">${restaurantSortOptions}</select></div>
+        ${sortedHistory.length ? `<div class="history-list">${sortedHistory.map(entry => `<details data-history-date="${escapeHtml(entry.date)}">
           <summary><strong>${escapeHtml(entry.date)}</strong><span class="history-added">추가 ${entry.addedCount.toLocaleString('ko-KR')}곳</span><span class="history-removed">제거 ${entry.removedCount.toLocaleString('ko-KR')}곳</span><span>영업 중 ${entry.total.toLocaleString('ko-KR')}곳</span></summary>
           <div class="history-detail empty-admin">펼치면 상세 목록을 불러옵니다.</div>
         </details>`).join('')}</div>` : '<div class="empty-admin">현재 데이터를 기준으로 설정했습니다. 다음 일일 갱신부터 추가·제거된 식당이 날짜별로 기록됩니다.</div>'}
       </article>
-      <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${(manifest.regions || []).map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
+      <article class="panel restaurant-regions"><h2>지역별 식당 현황</h2><div class="table-wrap"><table><thead><tr><th>지역</th><th>식당 수</th><th>데이터 파일</th></tr></thead><tbody>${sortedRegions.map(region => `<tr><td><strong>${escapeHtml(region.name)}</strong></td><td>${region.count.toLocaleString('ko-KR')}</td><td>${(region.files || [region.file]).length}개 조각</td></tr>`).join('')}</tbody></table></div></article>`;
+    $('#restaurant-sort').addEventListener('change', event => renderRestaurants(event.target.value));
     $('#run-restaurant-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 공공데이터를 다시 받아 개업·폐업 정보를 지금 갱신할까요?')) return;
       event.currentTarget.disabled = true;
