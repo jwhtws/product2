@@ -391,11 +391,17 @@
     const active = allRows.filter(item => statusKey(item) === 'active').length;
     const upcoming = allRows.filter(item => statusKey(item) === 'upcoming').length;
     const ended = allRows.filter(item => statusKey(item) === 'ended').length;
-    const latestCollectedAt = allRows.reduce((latest, item) => item.firstSeenAt > latest ? item.firstSeenAt : latest, '');
-    const newlyCollectedRows = allRows.filter(item => item.firstSeenAt === latestCollectedAt)
-      .sort((left, right) => String(left.startDate).localeCompare(String(right.startDate)) || String(left.name).localeCompare(String(right.name), 'ko-KR'));
-    const endedRows = allRows.filter(item => statusKey(item) === 'ended')
-      .sort((left, right) => String(right.endDate).localeCompare(String(left.endDate)) || String(left.name).localeCompare(String(right.name), 'ko-KR'));
+    const changeDates = [...new Set(allRows.flatMap(item => [
+      item.firstSeenAt,
+      statusKey(item) === 'ended' ? item.endDate : ''
+    ]).filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort((left, right) => right.localeCompare(left));
+    const popupChanges = changeDates.map(date => ({
+      date,
+      added: allRows.filter(item => item.firstSeenAt === date)
+        .sort((left, right) => String(left.name).localeCompare(String(right.name), 'ko-KR')),
+      removed: allRows.filter(item => statusKey(item) === 'ended' && item.endDate === date)
+        .sort((left, right) => String(left.name).localeCompare(String(right.name), 'ko-KR'))
+    })).filter(entry => entry.added.length || entry.removed.length);
     const collectionRows = (items, emptyMessage) => items.length ? `<div class="table-wrap"><table><thead><tr><th>팝업</th><th>장소</th><th>운영 기간</th><th>상태</th></tr></thead><tbody>${items.map(item =>
       `<tr><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.name)}</strong></a></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.region || '—')}</small></td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${statusKey(item) === 'ended' ? 'warn' : ''}">${phase(item)}</span></td></tr>`
     ).join('')}</tbody></table></div>` : `<div class="empty-admin">${emptyMessage}</div>`;
@@ -423,10 +429,15 @@
         <div class="health-item"><span>자동 갱신</span><b>${data.schedule.label}</b></div>
         <div class="health-item"><span>최근 작업</span><b class="status ${data.latest?.conclusion === 'failure' ? 'warn' : ''}">${running ? '실행 중' : data.latest?.conclusion === 'success' ? '성공' : data.latest?.conclusion || '기록 없음'}</b></div>
       </div><div class="sync-actions"><button id="run-popup-sync" class="small-button" ${running || !data.canRun ? 'disabled' : ''}>${running ? '갱신 실행 중' : '지금 갱신 실행'}</button>${data.latest?.url ? `<a href="${escapeHtml(data.latest.url)}" target="_blank" rel="noreferrer">실행 로그 보기 ↗</a>` : ''}</div></article>
-      <div class="popup-collection-grid">
-        <article class="panel popup-collection-panel"><h2>새로 수집된 푸드팝업 <small>${latestCollectedAt ? `${escapeHtml(latestCollectedAt)} · ${newlyCollectedRows.length.toLocaleString('ko-KR')}개` : ''}</small></h2>${collectionRows(newlyCollectedRows, '새로 수집된 푸드팝업이 없습니다.')}</article>
-        <article class="panel popup-collection-panel"><h2>종료된 푸드팝업 <small>${endedRows.length.toLocaleString('ko-KR')}개</small></h2>${collectionRows(endedRows, '종료된 푸드팝업이 없습니다.')}</article>
-      </div>
+      <article class="panel popup-history"><h2>일자별 팝업 추가·삭제 내역 <small>삭제 = 운영 종료로 진행 목록에서 제외</small></h2>
+        ${popupChanges.length ? `<div class="history-list">${popupChanges.map((entry, index) => `<details ${index === 0 ? 'open' : ''}>
+          <summary><strong>${escapeHtml(entry.date)}</strong><span class="history-added">추가 ${entry.added.length.toLocaleString('ko-KR')}개</span><span class="history-removed">삭제 ${entry.removed.length.toLocaleString('ko-KR')}개</span></summary>
+          <div class="history-columns">
+            <section><h3>추가된 팝업</h3>${collectionRows(entry.added, '이 날짜에 추가된 팝업이 없습니다.')}</section>
+            <section><h3>삭제된 팝업 <small>운영 종료</small></h3>${collectionRows(entry.removed, '이 날짜에 종료된 팝업이 없습니다.')}</section>
+          </div>
+        </details>`).join('')}</div>` : '<div class="empty-admin">날짜별 추가·삭제 이력이 없습니다.</div>'}
+      </article>
       <div class="table-wrap">${sortedRows.length ? `<table><thead><tr><th>팝업</th><th>브랜드</th><th>장소</th><th>지역</th><th>D-day</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${sortedRows.map(item =>
         `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(popupBrand(item))}</td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.address)}</small></td><td>${escapeHtml(item.region || '—')}</td><td>${dayDiff(item.startDate) > 0 ? `D-${dayDiff(item.startDate)}` : dayDiff(item.startDate) === 0 ? 'D-day' : `D+${Math.abs(dayDiff(item.startDate))}`}</td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${statusKey(item) === 'ended' ? 'warn' : ''}">${phase(item)}</span></td><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.sourceName || '공식 출처')} ↗</a></td></tr>`
       ).join('')}</tbody></table>` : `<div class="empty-admin">${statusFilter === 'active' ? '현재 진행 중인 푸드 팝업이 없습니다.' : statusFilter === 'ended' ? '종료된 푸드 팝업이 없습니다.' : '조건에 맞는 푸드 팝업이 없습니다.'}</div>`}</div>`;
