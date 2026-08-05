@@ -470,6 +470,7 @@ export async function onRequest(context) {
     return json({
       updatedAt: popupData.updatedAt,
       sources: popupData.sources || [],
+      stats: popupData.stats || {},
       popups: popupData.popups || [],
       schedule: { enabled: true, cron: '20 21 * * *', label: '매일 06:20 (한국시간)' },
       canRun: Boolean(context.env.GITHUB_ACTIONS_TOKEN),
