@@ -8,3 +8,4 @@ wrangler.toml
 scripts
 tests
 test-results
+*.md
