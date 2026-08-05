@@ -1,5 +1,6 @@
 import { body, clearCookie, clearFailures, createSession, json, rateLimit, recordFailure, requireAdmin, safeEqualText, sessionCookie } from '../../_lib/auth.js';
 import { likePattern, listParams, page, positiveId, taskRange, weekAnchor } from '../../_lib/admin-query.js';
+import { buildPopupSourceOverview } from '../../_lib/popup-sources.js';
 
 const memoryCache = new Map();
 
@@ -479,6 +480,24 @@ export async function onRequest(context) {
         startedAt: latest.run_started_at, updatedAt: latest.updated_at, url: latest.html_url
       } : null
     });
+  }
+  if (method === 'GET' && path === 'food-popup-sources') {
+    const sourceData = await cached('food-popup-sources', 5 * 60_000, async () => {
+      const [registry, coverage, venues, popupData] = await Promise.all([
+        githubFileJson(context, 'jwhtws/product1', 'data/data-source-registry.json')
+          .then(data => data || remoteJson('https://product1-84t.pages.dev/data/data-source-registry.json')),
+        githubFileJson(context, 'jwhtws/product1', 'data/popup-coverage.json')
+          .then(data => data || remoteJson('https://product1-84t.pages.dev/data/popup-coverage.json')),
+        githubFileJson(context, 'jwhtws/product1', 'data/popup-venues.json')
+          .then(data => data || remoteJson('https://product1-84t.pages.dev/data/popup-venues.json')),
+        githubFileJson(context, 'jwhtws/product1', 'data/popups.json')
+          .then(data => data || remoteJson('https://product1-84t.pages.dev/data/popups.json'))
+      ]);
+      if (!registry && !coverage && !venues && !popupData) return null;
+      return buildPopupSourceOverview({ registry, coverage, venues, popupData });
+    });
+    if (!sourceData) return json({ error: '푸드 팝업 데이터소스 원본을 불러오지 못했습니다.' }, 503);
+    return json(sourceData);
   }
   if (method === 'POST' && path === 'food-popup-sync/run') {
     if (!context.env.GITHUB_ACTIONS_TOKEN) return json({ error: 'GitHub 실행 토큰이 설정되지 않았습니다.' }, 503);

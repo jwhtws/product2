@@ -4,7 +4,13 @@
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[character]));
-  const adminViews = new Set(['dashboard', 'tasks', 'analytics', 'searchrankings', 'useranalytics', 'members', 'reviews', 'reviewsettings', 'userdata', 'activities', 'restaurants', 'foodpopups', 'logs']);
+  const safeExternalUrl = value => {
+    try {
+      const url = new URL(String(value || ''));
+      return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    } catch { return ''; }
+  };
+  const adminViews = new Set(['dashboard', 'tasks', 'analytics', 'searchrankings', 'useranalytics', 'members', 'reviews', 'reviewsettings', 'userdata', 'activities', 'restaurants', 'foodpopups', 'foodpopupsources', 'logs']);
   const historyStateKey = 'mukdangAdminView';
   let currentView = adminViews.has(history.state?.[historyStateKey]) ? history.state[historyStateKey] : 'dashboard';
   let historyReady = false;
@@ -477,6 +483,85 @@
     });
   }
 
+  async function renderFoodPopupSources(query = '', collectorFilter = '', regionFilter = '', statusFilter = '') {
+    loading();
+    const data = await api('food-popup-sources');
+    const allGroups = data.groups || [];
+    const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
+    const statusLabels = {
+      'verified-popup-found': '팝업 확인',
+      'official-feed-monitored': '공식 피드 감시',
+      'adapter-needed': '수집기 연결 필요',
+      'collector-needed': '수집기 필요',
+      active: '수집 중',
+      'no-results': '정상 · 결과 없음',
+      failed: '수집 실패',
+      error: '수집 오류',
+      unknown: '상태 미확인'
+    };
+    const methodLabels = { official_api: '공식 API', html: '공식 HTML', json_embedded: '공식 JSON', sitemap: '사이트맵', rss: 'RSS', manual_review: '수동 검수' };
+    const regions = [...new Set(allGroups.flatMap(group => group.branches.map(branch => branch.region)).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'ko-KR'));
+    const collectors = allGroups.map(group => group.collector).sort((left, right) => left.localeCompare(right, 'ko-KR'));
+    const filteredGroups = allGroups.map(group => {
+      if (collectorFilter && group.collector !== collectorFilter) return null;
+      const groupHaystack = `${group.collector} ${group.operator} ${(group.sourceNames || []).join(' ')} ${(group.urls || []).map(item => item.url).join(' ')}`.toLocaleLowerCase('ko-KR');
+      const groupMatches = normalizedQuery && groupHaystack.includes(normalizedQuery);
+      const branches = group.branches.filter(branch => {
+        if (regionFilter && branch.region !== regionFilter) return false;
+        if (statusFilter && branch.status !== statusFilter) return false;
+        if (!normalizedQuery || groupMatches) return true;
+        return `${branch.name} ${branch.region} ${branch.kind} ${branch.address}`.toLocaleLowerCase('ko-KR').includes(normalizedQuery);
+      });
+      return branches.length ? { ...group, branches } : null;
+    }).filter(Boolean);
+    const collectorOptions = collectors.map(collector => `<option value="${escapeHtml(collector)}" ${collectorFilter === collector ? 'selected' : ''}>${escapeHtml(collector)}</option>`).join('');
+    const regionOptions = regions.map(region => `<option value="${escapeHtml(region)}" ${regionFilter === region ? 'selected' : ''}>${escapeHtml(region)}</option>`).join('');
+    const coverageStatusOptions = [
+      ['verified-popup-found', '팝업 확인 지점'], ['official-feed-monitored', '공식 피드 감시'], ['adapter-needed', '수집기 연결 필요']
+    ].map(([value, label]) => `<option value="${value}" ${statusFilter === value ? 'selected' : ''}>${label}</option>`).join('');
+    const groupHtml = filteredGroups.map(group => {
+      const runtimeWarn = !['active', 'no-results'].includes(group.runtimeStatus);
+      const links = (group.urls || []).map(item => {
+        const url = safeExternalUrl(item.url);
+        return url ? `<a class="source-url" href="${escapeHtml(url)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(url)}</small></a>` : '';
+      }).join('');
+      const endpointRows = (group.endpoints || []).map(item => {
+        const url = safeExternalUrl(item.url);
+        return url ? `<tr><td><strong>${escapeHtml(item.label)}</strong></td><td>${escapeHtml(item.scope || '—')}</td><td><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)} ↗</a></td></tr>` : '';
+      }).join('');
+      const methods = (group.collectionMethods || []).map(method => methodLabels[method] || method).join(' · ') || '방식 미확인';
+      return `<details class="popup-source-group" ${query || collectorFilter || regionFilter || statusFilter ? 'open' : ''}>
+        <summary><strong>${escapeHtml(group.collector)}</strong><span>시설원장 ${group.branches.length.toLocaleString('ko-KR')}곳</span><span>엔드포인트 ${(group.endpoints || []).length.toLocaleString('ko-KR')}개</span><span>현재 팝업 ${group.runtimeCount.toLocaleString('ko-KR')}개</span><b class="status ${runtimeWarn ? 'warn' : ''}">${escapeHtml(statusLabels[group.runtimeStatus] || group.runtimeStatus)}</b></summary>
+        <div class="popup-source-body">
+          <div class="source-meta"><div><span>운영사</span><strong>${escapeHtml(group.operator || '미확인')}</strong></div><div><span>수집 방식</span><strong>${escapeHtml(methods)}</strong></div><div><span>최근 검증</span><strong>${escapeHtml(group.lastVerifiedAt || '미확인')}</strong></div><div><span>우선순위</span><strong>${escapeHtml(group.priority || '—')}</strong></div></div>
+          <div class="source-links">${links || '<span class="source-link-empty">등록된 공식 수집 링크가 없습니다.</span>'}</div>
+          ${endpointRows ? `<section class="source-endpoints"><h3>실제 수집 엔드포인트</h3><div class="table-wrap"><table><thead><tr><th>수집 대상</th><th>범위·호출 방식</th><th>URL</th></tr></thead><tbody>${endpointRows}</tbody></table></div></section>` : ''}
+          <section class="source-branches"><h3>브랜드별 전국 시설 원장 매핑 지점</h3>
+          <div class="table-wrap"><table><thead><tr><th>지점</th><th>지역·주소</th><th>시설 유형</th><th>수집 상태</th><th>확인 팝업</th><th>수집 링크</th></tr></thead><tbody>${group.branches.map(branch => {
+            const sourceUrl = safeExternalUrl(branch.sourceUrl);
+            const branchWarn = ['adapter-needed', 'collector-needed', 'unknown'].includes(branch.status);
+            return `<tr><td><strong>${escapeHtml(branch.name)}</strong></td><td>${escapeHtml(branch.region || '—')}<br><small>${escapeHtml(branch.address || '주소 미등록')}</small></td><td>${escapeHtml(branch.kind || '—')}</td><td><span class="status ${branchWarn ? 'warn' : ''}">${escapeHtml(statusLabels[branch.status] || branch.status)}</span></td><td>${branch.popupCount.toLocaleString('ko-KR')}개</td><td>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">열기 ↗</a>` : '—'}</td></tr>`;
+          }).join('')}</tbody></table></div></section>
+        </div>
+      </details>`;
+    }).join('');
+    $('#admin-content').innerHTML = `${heading('POP-UP SOURCES', '푸드 팝업 데이터소스', '브랜드별 공식 수집 링크와 전국 지점 연결 상태를 확인합니다.', `<div class="toolbar"><input id="popup-source-search" value="${escapeHtml(query)}" placeholder="브랜드·지점·주소·URL 검색"></div>`)}
+      <div class="popup-source-toolbar"><select id="popup-source-collector" aria-label="브랜드 선택"><option value="">전체 브랜드</option>${collectorOptions}</select><select id="popup-source-region" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select><select id="popup-source-status" aria-label="수집 상태 선택"><option value="">전체 수집 상태</option>${coverageStatusOptions}</select><button type="button" class="filter-reset" id="popup-source-reset">초기화</button></div>
+      <div class="metrics">
+        <article class="metric"><span>수집 데이터소스</span><strong>${data.summary.sourceCount.toLocaleString('ko-KR')}</strong><small>현재 등록 수집기</small></article>
+        <article class="metric"><span>브랜드 매핑 시설</span><strong>${data.summary.branchCount.toLocaleString('ko-KR')}</strong><small>전국 시설 원장 기준</small></article>
+        <article class="metric"><span>정상 수집 소스</span><strong>${data.summary.healthySourceCount.toLocaleString('ko-KR')}</strong><small>수집 중·정상 결과 없음</small></article>
+        <article class="metric"><span>수집기 연결 필요</span><strong>${data.summary.adapterNeededCount.toLocaleString('ko-KR')}</strong><small>브랜드 지점 후속 연결</small></article>
+      </div>
+      <article class="panel popup-source-note"><strong>전국 시설 ${data.summary.nationwideVenueTotal.toLocaleString('ko-KR')}곳 기준</strong><span>실제 수집기 설정의 지점별 엔드포인트와 전국 시설 원장에 브랜드가 매핑된 지점을 함께 표시합니다. 전점 공통 수집기는 각 시설에 같은 공식 URL을 연결합니다. 원본 갱신: ${data.updatedAt ? new Date(data.updatedAt).toLocaleString('ko-KR') : '미확인'}</span></article>
+      <div class="popup-source-groups">${groupHtml || '<div class="empty-admin panel">조건에 맞는 데이터소스나 지점이 없습니다.</div>'}</div>`;
+    $('#popup-source-search').addEventListener('change', event => renderFoodPopupSources(event.target.value, collectorFilter, regionFilter, statusFilter));
+    $('#popup-source-collector').addEventListener('change', event => renderFoodPopupSources(query, event.target.value, regionFilter, statusFilter));
+    $('#popup-source-region').addEventListener('change', event => renderFoodPopupSources(query, collectorFilter, event.target.value, statusFilter));
+    $('#popup-source-status').addEventListener('change', event => renderFoodPopupSources(query, collectorFilter, regionFilter, event.target.value));
+    $('#popup-source-reset').addEventListener('click', () => renderFoodPopupSources());
+  }
+
   async function renderRestaurants(sortKey = 'date') {
     loading();
     const sync = await api('restaurant-sync');
@@ -593,7 +678,7 @@
       button.dataset.view === view || (button.dataset.view === 'reviews' && view === 'reviewsettings')));
     $('.sidebar').classList.remove('open');
     try {
-      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, reviewsettings: renderReviewSettings, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, foodpopups: renderFoodPopups, logs: renderLogs }[view] || renderDashboard)();
+      await ({ dashboard: renderDashboard, tasks: renderTasks, analytics: renderAnalytics, searchrankings: renderSearchRankings, useranalytics: renderUserAnalytics, members: renderMembers, reviews: renderReviews, reviewsettings: renderReviewSettings, userdata: renderUserData, activities: renderActivities, restaurants: renderRestaurants, foodpopups: renderFoodPopups, foodpopupsources: renderFoodPopupSources, logs: renderLogs }[view] || renderDashboard)();
     } catch (error) {
       if (error.status === 401) return showLogin();
       $('#admin-content').innerHTML = `<div class="empty-admin">${escapeHtml(error.message)}</div>`;
