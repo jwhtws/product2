@@ -9,3 +9,5 @@ scripts
 tests
 test-results
 *.md
+package.json
+migrations
