@@ -361,17 +361,26 @@
     });
   }
 
-  async function renderFoodPopups(query = '', statusFilter = 'active', sortKey = 'ddaySoon', regionFilter = '') {
+  async function renderFoodPopups(query = '', statusFilter = 'active', sortKey = 'ddaySoon', regionFilter = '', brandFilter = '') {
     loading();
     const data = await api('food-popup-sync');
     const today = todayKst();
     const allRows = data.popups || [];
     const populationOrder = ['경기', '서울', '부산', '경남', '인천', '경북', '대구', '충남', '전북', '전남', '충북', '강원', '대전', '광주', '울산', '제주', '세종'];
     const regionRank = region => { const normalized = String(region || '').replace(/[특별광역자치도시]/g, ''); const index = populationOrder.findIndex(item => normalized.includes(item)); return index < 0 ? populationOrder.length : index; };
+    const popupBrand = item => {
+      const haystack = `${item.id || ''} ${item.brand || ''} ${item.sourceName || ''} ${item.venue || ''} ${item.address || ''}`.toLocaleLowerCase('ko-KR');
+      if (haystack.includes('신세계') || haystack.includes('shinsegae')) return '신세계';
+      if (haystack.includes('현대') || haystack.includes('hyundai')) return '현대';
+      if (haystack.includes('롯데') || haystack.includes('lotte')) return '롯데';
+      return item.brand || '기타';
+    };
     const dayDiff = date => Math.round((new Date(`${date}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000);
-    const rows = allRows.filter(item => (!regionFilter || item.region === regionFilter) && (!query || `${item.name} ${item.venue} ${item.address}`.toLocaleLowerCase('ko-KR').includes(query.toLocaleLowerCase('ko-KR'))));
-    const phase = item => item.startDate > today ? '예정' : item.endDate < today ? '종료' : '진행 중';
-    const statusKey = item => item.startDate > today ? 'upcoming' : item.endDate < today ? 'ended' : 'active';
+    const rows = allRows.filter(item => (!regionFilter || item.region === regionFilter) && (!brandFilter || popupBrand(item) === brandFilter) && (!query || `${item.name} ${item.venue} ${item.address} ${popupBrand(item)}`.toLocaleLowerCase('ko-KR').includes(query.toLocaleLowerCase('ko-KR'))));
+    const statusKey = item => ['active', 'upcoming', 'ended'].includes(item.status)
+      ? item.status
+      : item.startDate > today ? 'upcoming' : item.endDate < today ? 'ended' : 'active';
+    const phase = item => ({ active: '진행 중', upcoming: '예정', ended: '종료' })[statusKey(item)];
     const visibleRows = rows.filter(item => statusFilter === 'all' || statusKey(item) === statusFilter);
     const sortedRows = [...visibleRows].sort((left, right) => {
       const leftValue = sortKey === 'name' ? left.name : sortKey === 'region' ? regionRank(left.region) : sortKey === 'ddayLate' ? -dayDiff(left.startDate) : dayDiff(left.startDate);
@@ -379,9 +388,17 @@
       const primary = sortKey === 'region' ? leftValue - rightValue : String(leftValue ?? '').localeCompare(String(rightValue ?? ''), 'ko-KR');
       return primary || String(left.name).localeCompare(String(right.name), 'ko-KR');
     });
-    const active = allRows.filter(item => item.startDate <= today && item.endDate >= today).length;
-    const upcoming = allRows.filter(item => item.startDate > today).length;
-    const ended = allRows.filter(item => item.endDate < today).length;
+    const active = allRows.filter(item => statusKey(item) === 'active').length;
+    const upcoming = allRows.filter(item => statusKey(item) === 'upcoming').length;
+    const ended = allRows.filter(item => statusKey(item) === 'ended').length;
+    const latestCollectedAt = allRows.reduce((latest, item) => item.firstSeenAt > latest ? item.firstSeenAt : latest, '');
+    const newlyCollectedRows = allRows.filter(item => item.firstSeenAt === latestCollectedAt)
+      .sort((left, right) => String(left.startDate).localeCompare(String(right.startDate)) || String(left.name).localeCompare(String(right.name), 'ko-KR'));
+    const endedRows = allRows.filter(item => statusKey(item) === 'ended')
+      .sort((left, right) => String(right.endDate).localeCompare(String(left.endDate)) || String(left.name).localeCompare(String(right.name), 'ko-KR'));
+    const collectionRows = (items, emptyMessage) => items.length ? `<div class="table-wrap"><table><thead><tr><th>팝업</th><th>장소</th><th>운영 기간</th><th>상태</th></tr></thead><tbody>${items.map(item =>
+      `<tr><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.name)}</strong></a></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.region || '—')}</small></td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${statusKey(item) === 'ended' ? 'warn' : ''}">${phase(item)}</span></td></tr>`
+    ).join('')}</tbody></table></div>` : `<div class="empty-admin">${emptyMessage}</div>`;
     const running = data.latest && ['queued', 'in_progress', 'waiting', 'pending'].includes(data.latest.status);
     const statusTabs = [['active', '진행 중'], ['ended', '종료'], ['upcoming', '오픈 예정'], ['all', '전체']]
       .map(([value, label]) => `<button class="${statusFilter === value ? 'active' : ''}" data-popup-status="${value}">${label}</button>`).join('');
@@ -389,9 +406,11 @@
       .map(([value, label]) => `<button type="button" class="${sortKey === value ? 'active' : ''}" data-popup-sort="${value}">${label}</button>`).join('');
     const regionOptions = [...new Set(allRows.map(item => item.region).filter(Boolean))].sort((left, right) => regionRank(left) - regionRank(right) || left.localeCompare(right, 'ko-KR'))
       .map(region => `<option value="${escapeHtml(region)}" ${regionFilter === region ? 'selected' : ''}>${escapeHtml(region)}</option>`).join('');
+    const brandOptions = ['현대', '롯데', '신세계', ...new Set(allRows.map(popupBrand).filter(brand => !['현대', '롯데', '신세계'].includes(brand)))]
+      .map(brand => `<option value="${escapeHtml(brand)}" ${brandFilter === brand ? 'selected' : ''}>${escapeHtml(brand)}</option>`).join('');
     $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '진행 중·종료 팝업을 상태별로 나누어 확인하고 관리합니다.',
       `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"></div>`)}
-      <div class="popup-filter-toolbar"><div class="period-tabs popup-status-tabs">${statusTabs}</div><div class="period-tabs popup-sort-tabs">${sortOptions}</div><select id="popup-region-filter" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select><button type="button" class="filter-reset" id="popup-filter-reset">초기화</button></div>
+      <div class="popup-filter-toolbar"><div class="period-tabs popup-status-tabs">${statusTabs}</div><div class="period-tabs popup-sort-tabs">${sortOptions}</div><select id="popup-region-filter" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select><select id="popup-brand-filter" aria-label="브랜드 선택"><option value="">전체 브랜드</option>${brandOptions}</select><button type="button" class="filter-reset" id="popup-filter-reset">초기화</button></div>
       <div class="metrics">
         <article class="metric"><span>전체 팝업</span><strong>${allRows.length.toLocaleString('ko-KR')}</strong><small>product1 공용 원본</small></article>
         <article class="metric"><span>진행 중</span><strong>${active.toLocaleString('ko-KR')}</strong><small>오늘 운영 중</small></article>
@@ -404,14 +423,19 @@
         <div class="health-item"><span>자동 갱신</span><b>${data.schedule.label}</b></div>
         <div class="health-item"><span>최근 작업</span><b class="status ${data.latest?.conclusion === 'failure' ? 'warn' : ''}">${running ? '실행 중' : data.latest?.conclusion === 'success' ? '성공' : data.latest?.conclusion || '기록 없음'}</b></div>
       </div><div class="sync-actions"><button id="run-popup-sync" class="small-button" ${running || !data.canRun ? 'disabled' : ''}>${running ? '갱신 실행 중' : '지금 갱신 실행'}</button>${data.latest?.url ? `<a href="${escapeHtml(data.latest.url)}" target="_blank" rel="noreferrer">실행 로그 보기 ↗</a>` : ''}</div></article>
-      <div class="table-wrap">${sortedRows.length ? `<table><thead><tr><th>팝업</th><th>장소</th><th>지역</th><th>D-day</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${sortedRows.map(item =>
-        `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.address)}</small></td><td>${escapeHtml(item.region || '—')}</td><td>${dayDiff(item.startDate) > 0 ? `D-${dayDiff(item.startDate)}` : dayDiff(item.startDate) === 0 ? 'D-day' : `D+${Math.abs(dayDiff(item.startDate))}`}</td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${phase(item) === '종료' ? 'warn' : ''}">${phase(item)}</span></td><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.sourceName || '공식 출처')} ↗</a></td></tr>`
+      <div class="popup-collection-grid">
+        <article class="panel popup-collection-panel"><h2>새로 수집된 푸드팝업 <small>${latestCollectedAt ? `${escapeHtml(latestCollectedAt)} · ${newlyCollectedRows.length.toLocaleString('ko-KR')}개` : ''}</small></h2>${collectionRows(newlyCollectedRows, '새로 수집된 푸드팝업이 없습니다.')}</article>
+        <article class="panel popup-collection-panel"><h2>종료된 푸드팝업 <small>${endedRows.length.toLocaleString('ko-KR')}개</small></h2>${collectionRows(endedRows, '종료된 푸드팝업이 없습니다.')}</article>
+      </div>
+      <div class="table-wrap">${sortedRows.length ? `<table><thead><tr><th>팝업</th><th>브랜드</th><th>장소</th><th>지역</th><th>D-day</th><th>운영 기간</th><th>상태</th><th>출처</th></tr></thead><tbody>${sortedRows.map(item =>
+        `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(popupBrand(item))}</td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.address)}</small></td><td>${escapeHtml(item.region || '—')}</td><td>${dayDiff(item.startDate) > 0 ? `D-${dayDiff(item.startDate)}` : dayDiff(item.startDate) === 0 ? 'D-day' : `D+${Math.abs(dayDiff(item.startDate))}`}</td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${statusKey(item) === 'ended' ? 'warn' : ''}">${phase(item)}</span></td><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.sourceName || '공식 출처')} ↗</a></td></tr>`
       ).join('')}</tbody></table>` : `<div class="empty-admin">${statusFilter === 'active' ? '현재 진행 중인 푸드 팝업이 없습니다.' : statusFilter === 'ended' ? '종료된 푸드 팝업이 없습니다.' : '조건에 맞는 푸드 팝업이 없습니다.'}</div>`}</div>`;
-    $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, statusFilter, sortKey, regionFilter));
-    $$('[data-popup-sort]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, statusFilter, button.dataset.popupSort, regionFilter)));
-    $('#popup-region-filter').addEventListener('change', event => renderFoodPopups(query, statusFilter, sortKey, event.target.value));
-    $('#popup-filter-reset').addEventListener('click', () => renderFoodPopups('', 'active', 'ddaySoon', ''));
-    $$('[data-popup-status]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, button.dataset.popupStatus, sortKey, regionFilter)));
+    $('#popup-search').addEventListener('change', event => renderFoodPopups(event.target.value, statusFilter, sortKey, regionFilter, brandFilter));
+    $$('[data-popup-sort]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, statusFilter, button.dataset.popupSort, regionFilter, brandFilter)));
+    $('#popup-region-filter').addEventListener('change', event => renderFoodPopups(query, statusFilter, sortKey, event.target.value, brandFilter));
+    $('#popup-brand-filter').addEventListener('change', event => renderFoodPopups(query, statusFilter, sortKey, regionFilter, event.target.value));
+    $('#popup-filter-reset').addEventListener('click', () => renderFoodPopups('', 'active', 'ddaySoon', '', ''));
+    $$('[data-popup-status]').forEach(button => button.addEventListener('click', () => renderFoodPopups(query, button.dataset.popupStatus, sortKey, regionFilter, brandFilter)));
     $('#run-popup-sync')?.addEventListener('click', async event => {
       if (!confirm('공식 푸드 팝업 데이터를 지금 다시 수집할까요?')) return;
       event.currentTarget.disabled = true;
