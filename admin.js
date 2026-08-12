@@ -369,7 +369,7 @@
 
   async function renderFoodPopups(query = '', statusFilter = 'active', sortKey = 'ddaySoon', regionFilter = '', brandFilter = '', queueFilter = '') {
     loading();
-    const data = await api('food-popup-sync');
+    const [data, sourceOverview] = await Promise.all([api('food-popup-sync'), api('food-popup-sources')]);
     const today = todayKst();
     const allRows = data.popups || [];
     const populationOrder = ['경기', '서울', '부산', '경남', '인천', '경북', '대구', '충남', '전북', '전남', '충북', '강원', '대전', '광주', '울산', '제주', '세종'];
@@ -437,6 +437,20 @@
       ['ending', '3일 내 종료', reviewQueues.ending.length, '종료 전 일정 재확인'],
       ['incomplete', '정보 보완', reviewQueues.incomplete.length, '필수 운영정보 누락']
     ].map(([key, label, count, description]) => `<button type="button" class="review-queue-card ${queueFilter === key ? 'active' : ''}" data-popup-queue="${key}"><span>${label}</span><strong>${count.toLocaleString('ko-KR')}</strong><small>${escapeHtml(description)}</small></button>`).join('');
+    const collectionOverview = (sourceOverview.groups || []).map(group => {
+      const addedCount = group.branches.reduce((sum, branch) => sum + Number(branch.addedCount || 0), 0);
+      return `<details class="popup-source-group">
+        <summary><strong>${escapeHtml(group.collector)}</strong><span>시설 ${group.branches.length.toLocaleString('ko-KR')}곳</span><span>이번 갱신 추가 ${addedCount.toLocaleString('ko-KR')}개</span><b class="status ${['failed', 'error', 'unknown'].includes(group.runtimeStatus) ? 'warn' : ''}">${escapeHtml(group.runtimeStatus === 'active' ? '수집 중' : group.runtimeStatus === 'no-results' ? '정상 · 결과 없음' : group.runtimeStatus || '상태 미확인')}</b></summary>
+        <div class="popup-source-body"><div class="table-wrap"><table><thead><tr><th>시설</th><th>지역</th><th>현재 포함</th><th>이번 갱신 추가</th><th>포함된 링크</th><th>수집 링크</th></tr></thead><tbody>${group.branches.map(branch => {
+          const sourceUrl = safeExternalUrl(branch.sourceUrl);
+          const includedLinks = (branch.includedUrls || []).map((url, index) => {
+            const safeUrl = safeExternalUrl(url);
+            return safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">원본 ${index + 1} ↗</a>` : '';
+          }).filter(Boolean).join('<br>');
+          return `<tr><td><strong>${escapeHtml(branch.name)}</strong></td><td>${escapeHtml(branch.region || '—')}</td><td>${Number(branch.popupCount || 0).toLocaleString('ko-KR')}개</td><td><strong class="history-added">+${Number(branch.addedCount || 0).toLocaleString('ko-KR')}개</strong></td><td>${includedLinks || '—'}</td><td>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">수집처 열기 ↗</a>` : '—'}</td></tr>`;
+        }).join('')}</tbody></table></div></div>
+      </details>`;
+    }).join('');
     $('#admin-content').innerHTML = `${heading('POP-UP DATA', '푸드 팝업 데이터', '진행 중·종료 팝업을 상태별로 나누어 확인하고 관리합니다.',
       `<div class="toolbar"><input id="popup-search" value="${escapeHtml(query)}" placeholder="팝업·장소 검색"></div>`)}
       <div class="popup-filter-toolbar"><div class="period-tabs popup-status-tabs">${statusTabs}</div><div class="period-tabs popup-sort-tabs">${sortOptions}</div><select id="popup-region-filter" aria-label="지역 선택"><option value="">전체 지역</option>${regionOptions}</select><select id="popup-brand-filter" aria-label="브랜드 선택"><option value="">전체 브랜드</option>${brandOptions}</select><button type="button" class="filter-reset" id="popup-filter-reset">초기화</button></div>
@@ -455,6 +469,7 @@
         <div class="health-item"><span>자동 갱신</span><b>${data.schedule.label}</b></div>
         <div class="health-item"><span>최근 작업</span><b class="status ${data.latest?.conclusion === 'failure' ? 'warn' : ''}">${running ? '실행 중' : data.latest?.conclusion === 'success' ? '성공' : data.latest?.conclusion || '기록 없음'}</b></div>
       </div><div class="sync-actions"><button id="run-popup-sync" class="small-button" ${running || !data.canRun ? 'disabled' : ''}>${running ? '갱신 실행 중' : '지금 갱신 실행'}</button>${data.latest?.url ? `<a href="${escapeHtml(data.latest.url)}" target="_blank" rel="noreferrer">실행 로그 보기 ↗</a>` : ''}</div></article>
+      <article class="panel popup-collection-overview"><h2>이번 갱신 수집 현황 <small>${sourceOverview.latestAddedAt ? `${escapeHtml(sourceOverview.latestAddedAt)} 최초 확인 기준` : '신규 수집일 없음'}</small></h2><p>현재 수집 중인 모든 브랜드와 시설, 시설별 신규 추가 건수와 실제 포함 원본을 표시합니다.</p><div class="popup-source-groups">${collectionOverview || '<div class="empty-admin">등록된 수집 브랜드와 시설이 없습니다.</div>'}</div></article>
       <article class="panel popup-history"><h2>일자별 팝업 추가·삭제 내역 <small>삭제 = 운영 종료로 진행 목록에서 제외</small></h2>
         ${popupChanges.length ? `<div class="history-list">${popupChanges.map((entry, index) => `<details ${index === 0 ? 'open' : ''}>
           <summary><strong>${escapeHtml(entry.date)}</strong><span class="history-added">추가 ${entry.added.length.toLocaleString('ko-KR')}개</span><span class="history-removed">삭제 ${entry.removed.length.toLocaleString('ko-KR')}개</span></summary>

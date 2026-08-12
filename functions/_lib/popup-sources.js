@@ -53,6 +53,9 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
   const coverageVenues = Array.isArray(coverage.venues) ? coverage.venues : [];
   const venueRows = Array.isArray(venues.venues) ? venues.venues : [];
   const runtimeSources = Array.isArray(popupData.sources) ? popupData.sources : [];
+  const popupRows = Array.isArray(popupData.popups) ? popupData.popups : [];
+  const latestAddedAt = popupRows.reduce((latest, item) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(item.firstSeenAt) && item.firstSeenAt > latest ? item.firstSeenAt : latest, '');
   const activeRegistrySources = registrySources.filter(source =>
     source.currentCollector && ACTIVE_IMPLEMENTATIONS.has(source.implementationStatus));
   const collectorAliases = new Map(activeRegistrySources.map(source => [source.name, source.currentCollector]));
@@ -111,7 +114,17 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
         const endpointKey = normalizedBranch(item.branch);
         return endpointKey && branchKey && (endpointKey.includes(branchKey) || branchKey.includes(endpointKey));
       });
-      return { ...branch, sourceUrl: matchingEndpoint?.url || endpoints[0]?.url || dedupedUrls[0]?.url || '' };
+      const matchingPopups = popupRows.filter(item => {
+        const popupBranchKey = normalizedBranch(item.branch || item.venue);
+        return branchKey && popupBranchKey && (popupBranchKey.includes(branchKey) || branchKey.includes(popupBranchKey));
+      });
+      const includedUrls = unique(matchingPopups.map(item => item.sourceUrl || item.officialUrl));
+      return {
+        ...branch,
+        addedCount: matchingPopups.filter(item => item.firstSeenAt === latestAddedAt).length,
+        includedUrls,
+        sourceUrl: matchingEndpoint?.url || endpoints[0]?.url || dedupedUrls[0]?.url || ''
+      };
     })
       .sort((left, right) => String(left.region).localeCompare(String(right.region), 'ko-KR') || String(left.name).localeCompare(String(right.name), 'ko-KR'));
     return {
@@ -136,6 +149,7 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
 
   return {
     updatedAt: popupData.updatedAt || coverage.updatedAt || registry.lastUpdatedAt || venues.updatedAt || null,
+    latestAddedAt: latestAddedAt || null,
     summary: {
       sourceCount: groups.length,
       branchCount: groups.reduce((sum, group) => sum + group.branches.length, 0),

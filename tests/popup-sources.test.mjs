@@ -45,3 +45,25 @@ test('지점 코드형 수집기는 실제 지점 엔드포인트를 제공한�
   assert.equal(result.groups[0].endpoints.length, 13);
   assert.match(result.groups[0].branches[0].sourceUrl, /storeCd=SC00010/u);
 });
+
+test('시설별 최신 갱신 추가 건수와 포함 원본 링크를 계산한다', () => {
+  const result = buildPopupSourceOverview({
+    registry: { sources: [{ name: '테스트 소스', currentCollector: '테스트 브랜드', implementationStatus: 'active', eventUrl: 'https://brand.test/events' }] },
+    coverage: { venues: [
+      { venueId: 'v1', name: '테스트백화점 강남점', collector: '테스트 브랜드', status: 'verified-popup-found', popupCount: 3 },
+      { venueId: 'v2', name: '테스트백화점 부산점', collector: '테스트 브랜드', status: 'official-feed-monitored', popupCount: 0 }
+    ] },
+    popupData: { sources: [{ name: '테스트 브랜드', status: 'active', count: 3 }], popups: [
+      { venue: '테스트백화점 강남점', firstSeenAt: '2026-08-12', sourceUrl: 'https://brand.test/popup/1' },
+      { branch: '테스트백화점 강남점', firstSeenAt: '2026-08-12', officialUrl: 'https://brand.test/popup/2' },
+      { venue: '테스트백화점 강남점', firstSeenAt: '2026-08-10', sourceUrl: 'https://brand.test/popup/old' }
+    ] }
+  });
+
+  assert.equal(result.latestAddedAt, '2026-08-12');
+  assert.equal(result.groups[0].branches[0].addedCount, 2);
+  assert.deepEqual(result.groups[0].branches[0].includedUrls, [
+    'https://brand.test/popup/1', 'https://brand.test/popup/2', 'https://brand.test/popup/old'
+  ]);
+  assert.equal(result.groups[0].branches[1].addedCount, 0);
+});
