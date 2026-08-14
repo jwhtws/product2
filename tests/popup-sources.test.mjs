@@ -67,3 +67,14 @@ test('시설별 최신 갱신 추가 건수와 포함 원본 링크를 계산한
   ]);
   assert.equal(result.groups[0].branches[1].addedCount, 0);
 });
+
+test('AK플라자 백화점과 쇼핑몰 9개 지점의 공식 쇼핑뉴스 링크를 제공한다', () => {
+  const result = buildPopupSourceOverview({
+    registry: { sources: [{ name: 'AK플라자', currentCollector: 'AK플라자', implementationStatus: 'active' }] },
+    popupData: { sources: [{ name: 'AK플라자', status: 'active', count: 5 }] }
+  });
+
+  assert.equal(result.groups[0].endpoints.length, 9);
+  assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 수원점' && /category=11&store=02/u.test(item.url)));
+  assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 세종점' && /category=11&store=53/u.test(item.url)));
+});

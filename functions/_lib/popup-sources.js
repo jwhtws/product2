@@ -26,9 +26,9 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
     ['luxuryhall', '갤러리아 명품관'], ['timeworld', '갤러리아 타임월드'], ['gwanggyo', '갤러리아 광교'], ['centercity', '갤러리아 센터시티'], ['jinju', '갤러리아 진주']
   ].map(([slug, branch]) => endpoint(branch, `https://dept.galleria.co.kr/store-info/${slug}/promotion/shopping-news?qCategory=NEWOPENING_POPUP`, 'NEWOPENING_POPUP 쇼핑뉴스', branch)),
   'AK플라자': [
-    ['01', '수원'], ['02', '분당'], ['03', '평택'], ['04', '원주'], ['12', '금정'],
-    ['13', '홍대'], ['14', '기흥'], ['15', '광명'], ['16', '금정'], ['17', '세종']
-  ].map(([code, name]) => endpoint(`AK플라자 ${name}점`, `https://www.akplaza.com/board/event/list?store=${code}`, `store=${code}`, `AK플라자 ${name}점`)),
+    ['02', '수원'], ['03', '분당'], ['04', '평택'], ['05', '원주'],
+    ['11', '광명'], ['12', '금정'], ['51', '홍대'], ['52', '기흥'], ['53', '세종']
+  ].map(([code, name]) => endpoint(`AK플라자 ${name}점`, `https://www.akplaza.com/board/news/list?category=11&store=${code}`, `쇼핑뉴스 전 페이지 · store=${code}`, `AK플라자 ${name}점`)),
   'NC·뉴코아': [endpoint('이랜드리테일 전 지점 목록', 'https://www.elandretail.com/store01.do', '지점 ID 자동 발견 후 각 지점 쇼핑뉴스 순회')],
   '아이파크몰': [endpoint('아이파크몰 공식 이벤트', 'https://www.hdc-iparkmall.com/event', '용산점 공식 이벤트')],
   '이마트·트레이더스': [
