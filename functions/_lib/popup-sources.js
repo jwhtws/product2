@@ -9,41 +9,60 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
     endpoint('전 지점 통합 검색', 'https://www.ehyundai.com/newPortal/search/result.do', '식품 키워드 10종 · 행사 검색 최대 50페이지')
   ],
   '롯데백화점·롯데아울렛·롯데몰': [
-    ['0001', '롯데백화점 본점'], ['0022', '롯데백화점 노원점'], ['0027', '롯데백화점 센텀시티점'],
-    ['0028', '롯데백화점 건대스타시티점'], ['0333', '롯데백화점 광복점'], ['0336', '롯데백화점 안산점'],
-    ['0342', '롯데아울렛 청주점'], ['0344', '롯데백화점 인천점'], ['0399', '롯데백화점 동탄점'],
-    ['0360', '롯데아울렛 고양점'], ['0347', '롯데아울렛 고양터미널점'],
-    ['0017', '롯데백화점 창원점'], ['0017', '롯데백화점 창원점 신관']
-  ].map(([code, branch]) => endpoint(branch, `https://www.lotteshopping.com/store/main?cstrCd=${code}`, `cstrCd=${code} · 공식 지점 페이지의 Shopping News`, branch)),
+    ['0350', '롯데몰 광명점'], ['0399', '롯데백화점 동탄점'], ['0011', '롯데백화점 일산점'],
+    ['0355', '롯데몰 광교점'], ['0341', '롯데백화점 평촌점'], ['0360', '롯데아울렛 고양점'],
+    ['0347', '롯데아울렛 고양터미널점'], ['0362', '롯데프리미엄아울렛 기흥점'], ['0339', '롯데프리미엄아울렛 파주점'],
+    ['0358', '롯데몰 진주점'], ['0017', '롯데백화점 창원점'], ['0017', '롯데백화점 창원점 신관'],
+    ['0014', '롯데백화점 포항점'], ['0023', '롯데백화점 대구점'], ['0024', '롯데백화점 상인점'],
+    ['0338', '롯데아울렛 이시아폴리스점'], ['0012', '롯데백화점 대전점'], ['0352', '롯데몰 동부산점'],
+    ['0333', '롯데백화점 광복점'], ['0016', '롯데백화점 동래점'], ['0027', '롯데백화점 센텀시티점'],
+    ['0005', '롯데백화점 부산점'], ['0340', '롯데몰 김포공항'], ['0401', '롯데몰 은평'],
+    ['0028', '롯데백화점 건대스타시티점'], ['0022', '롯데백화점 노원점'], ['0026', '롯데백화점 미아점'],
+    ['0001', '롯데백화점 본점'], ['0002', '롯데백화점 에비뉴엘 월드타워점'], ['0010', '롯데백화점 영등포점'],
+    ['0002', '롯데백화점 잠실점'], ['0004', '롯데백화점 청량리역사점'], ['0013', '롯데백화점 강남점'],
+    ['0004', '롯데몰 청량리점'], ['0343', '롯데아울렛 서울역점'], ['0015', '롯데백화점 울산점'],
+    ['0007', '롯데백화점 광주점'], ['0407', '롯데몰 여수점'], ['0332', '롯데아울렛 수완점'],
+    ['0021', '롯데아울렛 광주 월드컵점'], ['0025', '롯데백화점 전주점'], ['0342', '롯데아울렛 청주점'],
+    ['0344', '롯데백화점 인천점'], ['0336', '롯데백화점 안산점']
+  ].map(([code, branch]) => endpoint(branch, `https://www.lotteshopping.com/store/main?cstrCd=${code}`, `cstrCd=${code} · 공식 지점 페이지의 Shopping News`, branch)).concat([
+    endpoint('롯데 전 지점 안내', 'https://www.lotteshopping.com/store/main', '공식 전 지점 목록')
+  ]),
   '신세계백화점': [
     ['SC00002', '강남점'], ['SC00006', '광주신세계'], ['SC00011', '김해점'], ['SC00013', '대구신세계'],
     ['SC00060', '대전신세계 Art & Science'], ['SC00005', '마산점'], ['SC00001', '본점'], ['SC00008', '센텀시티점'],
     ['SC00012', '스타필드 하남점'], ['SC00007', '사우스시티점'], ['SC00010', '의정부점'], ['SC00009', '천안아산점'], ['SC00003', '타임스퀘어점']
-  ].map(([code, branch]) => endpoint(`신세계백화점 ${branch}`, `https://www.shinsegae.com/shopping/list.do?schMainCd=02&storeCd=${code}`, `storeCd=${code} · 공식 쇼핑정보`, `신세계백화점 ${branch}`)),
+  ].map(([code, branch]) => endpoint(`신세계백화점 ${branch}`, `https://www.shinsegae.com/shopping/list.do?schMainCd=02&storeCd=${code}`, `storeCd=${code} · 공식 쇼핑정보`, `신세계백화점 ${branch}`)).concat([
+    endpoint('신세계백화점 전 지점 안내', 'https://www.shinsegae.com/store/main.do', '공식 전 지점 목록')
+  ]),
   '스타필드·스타필드시티': [
     ['hanam', '스타필드 하남'], ['goyang', '스타필드 고양'], ['anseong', '스타필드 안성'], ['suwon', '스타필드 수원'],
     ['coexmall', '스타필드 코엑스몰'], ['wirye', '스타필드시티 위례'], ['bucheon', '스타필드시티 부천'], ['myeongji', '스타필드시티 명지']
   ].map(([slug, branch]) => endpoint(branch, `https://www.starfield.co.kr/${slug}/eventBenefit/events`, `공식 지점 이벤트 페이지`, branch)).concat([
-    endpoint('스타필드 수원 바이츠 플레이스', 'https://www.starfield.co.kr/suwon/tenant/floorInfo', '수원 층별안내 보조 수집', '스타필드 수원')
+    endpoint('스타필드 수원 바이츠 플레이스', 'https://www.starfield.co.kr/suwon/tenant/floorInfo', '수원 층별안내 보조 수집', '스타필드 수원'),
+    endpoint('스타필드 전 지점 안내', 'https://www.starfield.co.kr/', '공식 전 지점 목록')
   ]),
   '갤러리아': [
     ['luxuryhall', '갤러리아 명품관'], ['timeworld', '갤러리아 타임월드'], ['gwanggyo', '갤러리아 광교'], ['centercity', '갤러리아 센터시티'], ['jinju', '갤러리아 진주']
-  ].map(([slug, branch]) => endpoint(branch, `https://dept.galleria.co.kr/store-info/${slug}/promotion/shopping-news?qCategory=NEWOPENING_POPUP`, 'NEWOPENING_POPUP 쇼핑뉴스', branch)),
+  ].map(([slug, branch]) => endpoint(branch, `https://dept.galleria.co.kr/store-info/${slug}/promotion/shopping-news?qCategory=NEWOPENING_POPUP`, 'NEWOPENING_POPUP 쇼핑뉴스', branch)).concat([
+    endpoint('갤러리아 전 지점 안내', 'https://dept.galleria.co.kr/main.page', '공식 전 지점 목록')
+  ]),
   'AK플라자': [
     ['02', '수원'], ['03', '분당'], ['04', '평택'], ['05', '원주'],
     ['11', '광명'], ['12', '금정'], ['51', '홍대'], ['52', '기흥'], ['53', '세종']
-  ].map(([code, name]) => endpoint(`AK플라자 ${name}점`, `https://www.akplaza.com/board/news/list?category=11&store=${code}`, `쇼핑뉴스 전 페이지 · store=${code}`, `AK플라자 ${name}점`)),
+  ].map(([code, name]) => endpoint(`AK플라자 ${name}점`, `https://www.akplaza.com/board/news/list?category=11&store=${code}`, `쇼핑뉴스 전 페이지 · store=${code}`, `AK플라자 ${name}점`)).concat([
+    endpoint('AK플라자 전 지점 안내', 'https://www.akplaza.com/', '공식 전 지점 목록')
+  ]),
   'NC·뉴코아': [endpoint('이랜드리테일 전 지점 목록', 'https://www.elandretail.com/store01.do', '지점 ID 자동 발견 후 각 지점 쇼핑뉴스 순회')],
   '아이파크몰': [endpoint('아이파크몰 공식 이벤트', 'https://www.hdc-iparkmall.com/event', '용산점 공식 이벤트')],
   '이마트·트레이더스': [
-    endpoint('이마트 공식 이벤트', 'https://store.emart.com/event/event.do', '이마트 전점'),
-    endpoint('트레이더스 공식 이벤트', 'https://store.emart.com/event/traders.do', '트레이더스 전점'),
+    endpoint('이마트 공식 점포 안내', 'https://store.emart.com/main/main.do', '이마트 전점'),
+    endpoint('트레이더스 공식 점포 안내', 'https://store.traders.co.kr/main/main.do', '트레이더스 전점'),
     endpoint('이마트 공식 공지', 'https://store.emart.com/news/notice_list.do', '이마트 전점')
   ],
   '롯데마트': [endpoint('롯데마트 공식 행사', 'https://company.lottemart.com/en/event_list.asp', '롯데마트 전점')],
   '홈플러스': [endpoint('홈플러스 공식 공지', 'https://corporate.homeplus.co.kr/Business/Hyper_Notice.aspx', '홈플러스 전점')],
   '공식 쇼핑몰·마트 사이트맵': [
-    'www.hdc-iparkmall.com', 'store.emart.com', 'company.lottemart.com', 'corporate.homeplus.co.kr', 'www.akplaza.com', 'www.timessquare.co.kr', 'www.shinsegae.com'
+    'www.hdc-iparkmall.com', 'store.emart.com', 'company.lottemart.com', 'www.akplaza.com', 'www.timessquare.co.kr', 'www.shinsegae.com'
   ].map(domain => endpoint(`${domain} robots.txt`, `https://${domain}/robots.txt`, '공식 sitemap URL 자동 발견')),
   '롯데 공식 블로그': [endpoint('롯데 공식 블로그 RSS', 'https://blog.lotte.co.kr/feed/', '공식 글에서 행사·지점 추출')]
 });
@@ -118,6 +137,7 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
       const branchRegistrySource = sources.find(source => source.name === branch.sourceName);
       const branchRegistryUrl = branchRegistrySource?.eventUrl || branchRegistrySource?.officialUrl || '';
       const hasBranchSpecificEndpoints = endpoints.some(item => item.branch);
+      const genericEndpoint = endpoints.find(item => !item.branch);
       const matchingEndpoint = endpoints.find(item => {
         const endpointKey = normalizedBranch(item.branch);
         return endpointKey && branchKey && endpointKey === branchKey;
@@ -132,6 +152,7 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
         addedCount: matchingPopups.filter(item => item.firstSeenAt === latestAddedAt).length,
         includedUrls,
         sourceUrl: matchingEndpoint?.url
+          || (hasBranchSpecificEndpoints ? genericEndpoint?.url : '')
           || (!hasBranchSpecificEndpoints ? branchRegistryUrl : '')
           || (endpoints.length === 1 && !endpoints[0].branch ? endpoints[0].url : '')
           || (!hasBranchSpecificEndpoints && sources.length === 1 ? dedupedUrls[0]?.url : '')

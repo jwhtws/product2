@@ -42,7 +42,7 @@ test('지점 코드형 수집기는 실제 지점 엔드포인트를 제공한�
     popupData: { sources: [{ name: '신세계백화점', status: 'active', count: 0 }] }
   });
 
-  assert.equal(result.groups[0].endpoints.length, 13);
+  assert.equal(result.groups[0].endpoints.filter(item => item.branch).length, 13);
   assert.match(result.groups[0].branches[0].sourceUrl, /\/shopping\/list\.do\?.*storeCd=SC00010/u);
 });
 
@@ -74,7 +74,7 @@ test('AK플라자 백화점과 쇼핑몰 9개 지점의 공식 쇼핑뉴스 링�
     popupData: { sources: [{ name: 'AK플라자', status: 'active', count: 5 }] }
   });
 
-  assert.equal(result.groups[0].endpoints.length, 9);
+  assert.equal(result.groups[0].endpoints.filter(item => item.branch).length, 9);
   assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 수원점' && /category=11&store=02/u.test(item.url)));
   assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 세종점' && /category=11&store=53/u.test(item.url)));
 });
@@ -99,7 +99,7 @@ test('롯데백화점 지점명에 맞는 공식 지점 코드를 연결한다',
   assert.match(branches.get('롯데아울렛 고양점'), /cstrCd=0360/u);
   assert.match(branches.get('롯데백화점 창원점'), /cstrCd=0017/u);
   assert.match(branches.get('롯데백화점 창원점 신관'), /cstrCd=0017/u);
-  assert.equal(branches.get('롯데백화점 미지원점'), '');
+  assert.equal(branches.get('롯데백화점 미지원점'), 'https://www.lotteshopping.com/store/main');
 });
 
 test('운영콘솔의 지점 수집처는 내부 JSON API가 아닌 사람이 열 수 있는 공식 페이지다', () => {
@@ -139,8 +139,9 @@ test('모든 지점 전용 엔드포인트는 같은 매장에만 연결하고 �
       if (!endpointByBranch.has(item.branch)) endpointByBranch.set(item.branch, item.url);
     }
     for (const branch of group.branches) {
-      if (branch.name.endsWith('미지원테스트점')) assert.equal(branch.sourceUrl, '');
-      else assert.equal(branch.sourceUrl, endpointByBranch.get(branch.name), `${collector}: ${branch.name}`);
+      if (branch.name.endsWith('미지원테스트점')) {
+        assert.equal(branch.sourceUrl, group.endpoints.find(item => !item.branch)?.url, `${collector}: fallback`);
+      } else assert.equal(branch.sourceUrl, endpointByBranch.get(branch.name), `${collector}: ${branch.name}`);
     }
   }
 });
