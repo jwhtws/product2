@@ -43,7 +43,7 @@ test('지점 코드형 수집기는 실제 지점 엔드포인트를 제공한�
   });
 
   assert.equal(result.groups[0].endpoints.length, 13);
-  assert.match(result.groups[0].branches[0].sourceUrl, /storeCd=SC00010/u);
+  assert.match(result.groups[0].branches[0].sourceUrl, /\/shopping\/list\.do\?.*storeCd=SC00010/u);
 });
 
 test('시설별 최신 갱신 추가 건수와 포함 원본 링크를 계산한다', () => {
@@ -89,9 +89,22 @@ test('롯데백화점 지점명에 맞는 공식 지점 코드를 연결한다',
   });
 
   const branches = new Map(result.groups[0].branches.map(branch => [branch.name, branch.sourceUrl]));
-  assert.match(branches.get('롯데백화점 본점'), /cstrCd=0001/u);
-  assert.match(branches.get('롯데백화점 광복점'), /cstrCd=0333/u);
+  assert.match(branches.get('롯데백화점 본점'), /\/store\/main\?cstrCd=0001/u);
+  assert.match(branches.get('롯데백화점 광복점'), /\/store\/main\?cstrCd=0333/u);
   assert.doesNotMatch(branches.get('롯데백화점 본점'), /cstrCd=0333/u);
+});
+
+test('운영콘솔의 지점 수집처는 내부 JSON API가 아닌 사람이 열 수 있는 공식 페이지다', () => {
+  const collectors = ['롯데백화점·롯데아울렛·롯데몰', '신세계백화점', '스타필드·스타필드시티', '갤러리아', 'AK플라자'];
+  for (const collector of collectors) {
+    const group = buildPopupSourceOverview({
+      registry: { sources: [{ name: collector, currentCollector: collector, implementationStatus: 'active' }] }
+    }).groups[0];
+    for (const item of group.endpoints.filter(endpoint => endpoint.branch)) {
+      assert.doesNotMatch(item.url, /\/api\/|ajaxList\.do|search\/searchResult/iu, `${collector}: ${item.label}`);
+      assert.match(item.url, /^https:\/\//u, `${collector}: ${item.label}`);
+    }
+  }
 });
 
 test('모든 지점 전용 엔드포인트는 같은 매장에만 연결하고 미지원 매장에는 다른 지점 링크를 쓰지 않는다', () => {

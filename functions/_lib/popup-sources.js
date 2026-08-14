@@ -12,16 +12,16 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
     ['0001', '롯데백화점 본점'], ['0022', '롯데백화점 노원점'], ['0027', '롯데백화점 센텀시티점'],
     ['0028', '롯데백화점 건대스타시티점'], ['0333', '롯데백화점 광복점'], ['0336', '롯데백화점 안산점'],
     ['0342', '롯데아울렛 청주점'], ['0344', '롯데백화점 인천점'], ['0399', '롯데백화점 동탄점']
-  ].map(([code, branch]) => endpoint(branch, `https://m.lotteshopping.com/search/searchResult?cstrCd=${code}&searchTerm=-`, `cstrCd=${code} · 공식 쇼핑뉴스 검색`, branch)),
+  ].map(([code, branch]) => endpoint(branch, `https://www.lotteshopping.com/store/main?cstrCd=${code}`, `cstrCd=${code} · 공식 지점 페이지의 Shopping News`, branch)),
   '신세계백화점': [
     ['SC00002', '강남점'], ['SC00006', '광주신세계'], ['SC00011', '김해점'], ['SC00013', '대구신세계'],
     ['SC00060', '대전신세계 Art & Science'], ['SC00005', '마산점'], ['SC00001', '본점'], ['SC00008', '센텀시티점'],
     ['SC00012', '스타필드 하남점'], ['SC00007', '사우스시티점'], ['SC00010', '의정부점'], ['SC00009', '천안아산점'], ['SC00003', '타임스퀘어점']
-  ].map(([code, branch]) => endpoint(`신세계백화점 ${branch}`, `https://www.shinsegae.com/shopping/ajaxList.do?mainCd=02&storeCd=${code}`, `storeCd=${code}`, `신세계백화점 ${branch}`)),
+  ].map(([code, branch]) => endpoint(`신세계백화점 ${branch}`, `https://www.shinsegae.com/shopping/list.do?schMainCd=02&storeCd=${code}`, `storeCd=${code} · 공식 쇼핑정보`, `신세계백화점 ${branch}`)),
   '스타필드·스타필드시티': [
     ['hanam', '스타필드 하남'], ['goyang', '스타필드 고양'], ['anseong', '스타필드 안성'], ['suwon', '스타필드 수원'],
     ['coexmall', '스타필드 코엑스몰'], ['wirye', '스타필드시티 위례'], ['bucheon', '스타필드시티 부천'], ['myeongji', '스타필드시티 명지']
-  ].map(([slug, branch]) => endpoint(branch, `https://www.starfield.co.kr/api/${slug}/event/eventList.do?evt_gbn=event&lang=ko&pageIndex=1`, `지점 API · 전체 페이지 순회`, branch)).concat([
+  ].map(([slug, branch]) => endpoint(branch, `https://www.starfield.co.kr/${slug}/eventBenefit/events`, `공식 지점 이벤트 페이지`, branch)).concat([
     endpoint('스타필드 수원 바이츠 플레이스', 'https://www.starfield.co.kr/suwon/tenant/floorInfo', '수원 층별안내 보조 수집', '스타필드 수원')
   ]),
   '갤러리아': [
