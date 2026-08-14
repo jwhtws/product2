@@ -9,8 +9,10 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
     endpoint('전 지점 통합 검색', 'https://www.ehyundai.com/newPortal/search/result.do', '식품 키워드 10종 · 행사 검색 최대 50페이지')
   ],
   '롯데백화점·롯데아울렛·롯데몰': [
-    endpoint('전 지점 자동 발견 시드', 'https://m.lotteshopping.com/search/searchResult?cstrCd=0333&searchTerm=-', '광복점 응답에서 공식 전 지점 코드를 발견해 순회')
-  ],
+    ['0001', '롯데백화점 본점'], ['0022', '롯데백화점 노원점'], ['0027', '롯데백화점 센텀시티점'],
+    ['0028', '롯데백화점 건대스타시티점'], ['0333', '롯데백화점 광복점'], ['0336', '롯데백화점 안산점'],
+    ['0342', '롯데아울렛 청주점'], ['0344', '롯데백화점 인천점'], ['0399', '롯데백화점 동탄점']
+  ].map(([code, branch]) => endpoint(branch, `https://m.lotteshopping.com/search/searchResult?cstrCd=${code}&searchTerm=-`, `cstrCd=${code} · 공식 쇼핑뉴스 검색`, branch)),
   '신세계백화점': [
     ['SC00002', '강남점'], ['SC00006', '광주신세계'], ['SC00011', '김해점'], ['SC00013', '대구신세계'],
     ['SC00060', '대전신세계 Art & Science'], ['SC00005', '마산점'], ['SC00001', '본점'], ['SC00008', '센텀시티점'],
@@ -45,7 +47,7 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
 });
 
 const normalizedBranch = value => String(value || '').toLocaleLowerCase('ko-KR')
-  .replace(/\(주\)|주식회사|백화점|프리미엄|아울렛|스타필드시티|스타필드|갤러리아|ak플라자|에이케이플라자/gu, '')
+  .replace(/\(주\)|주식회사|롯데쇼핑|롯데|신세계|이마트|한화|백화점|프리미엄|아울렛|스타필드시티|스타필드|시티|갤러리아|ak플라자|에이케이플라자/gu, '')
   .replace(/[^0-9a-z가-힣]/giu, '');
 
 export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues = {}, popupData = {} } = {}) {
@@ -75,6 +77,7 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
     const detail = venueById.get(item.venueId) || {};
     branchesByCollector.get(collector).push({
       id: item.venueId || detail.id || `${collector}:${item.name}`,
+      sourceName: item.collector,
       name: item.name || detail.name || '이름 미확인 지점',
       region: item.region || detail.region || '',
       kind: item.kind || detail.kind || '',
@@ -110,9 +113,11 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
     }
     branches = branches.map(branch => {
       const branchKey = normalizedBranch(branch.name);
+      const branchRegistrySource = sources.find(source => source.name === branch.sourceName);
+      const branchRegistryUrl = branchRegistrySource?.eventUrl || branchRegistrySource?.officialUrl || '';
       const matchingEndpoint = endpoints.find(item => {
         const endpointKey = normalizedBranch(item.branch);
-        return endpointKey && branchKey && (endpointKey.includes(branchKey) || branchKey.includes(endpointKey));
+        return endpointKey && branchKey && endpointKey === branchKey;
       });
       const matchingPopups = popupRows.filter(item => {
         const popupBranchKey = normalizedBranch(item.branch || item.venue);
@@ -123,7 +128,11 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
         ...branch,
         addedCount: matchingPopups.filter(item => item.firstSeenAt === latestAddedAt).length,
         includedUrls,
-        sourceUrl: matchingEndpoint?.url || endpoints[0]?.url || dedupedUrls[0]?.url || ''
+        sourceUrl: matchingEndpoint?.url
+          || branchRegistryUrl
+          || (endpoints.length === 1 && !endpoints[0].branch ? endpoints[0].url : '')
+          || (sources.length === 1 ? dedupedUrls[0]?.url : '')
+          || ''
       };
     })
       .sort((left, right) => String(left.region).localeCompare(String(right.region), 'ko-KR') || String(left.name).localeCompare(String(right.name), 'ko-KR'));

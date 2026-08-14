@@ -21,7 +21,7 @@ test('공식 소스와 전국 시설 지점을 수집기별로 결합한다', ()
   assert.equal(result.summary.unassignedVenueCount, 1);
   assert.equal(result.groups[0].collector, '공식 쇼핑몰·마트 사이트맵');
   assert.equal(result.groups[0].branches[0].address, '서울 영등포구');
-  assert.equal(result.groups[0].branches[0].sourceUrl, 'https://www.hdc-iparkmall.com/robots.txt');
+  assert.equal(result.groups[0].branches[0].sourceUrl, 'https://source.test/events');
 });
 
 test('시설 매핑이 없는 전국 단위 소스도 수집 범위를 표시한다', () => {
@@ -77,4 +77,49 @@ test('AK플라자 백화점과 쇼핑몰 9개 지점의 공식 쇼핑뉴스 링�
   assert.equal(result.groups[0].endpoints.length, 9);
   assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 수원점' && /category=11&store=02/u.test(item.url)));
   assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 세종점' && /category=11&store=53/u.test(item.url)));
+});
+
+test('롯데백화점 지점명에 맞는 공식 지점 코드를 연결한다', () => {
+  const result = buildPopupSourceOverview({
+    registry: { sources: [{ name: '롯데', currentCollector: '롯데백화점·롯데아울렛·롯데몰', implementationStatus: 'active' }] },
+    coverage: { venues: [
+      { venueId: 'main', name: '롯데백화점 본점', collector: '롯데백화점·롯데아울렛·롯데몰' },
+      { venueId: 'gwangbok', name: '롯데백화점 광복점', collector: '롯데백화점·롯데아울렛·롯데몰' }
+    ] }
+  });
+
+  const branches = new Map(result.groups[0].branches.map(branch => [branch.name, branch.sourceUrl]));
+  assert.match(branches.get('롯데백화점 본점'), /cstrCd=0001/u);
+  assert.match(branches.get('롯데백화점 광복점'), /cstrCd=0333/u);
+  assert.doesNotMatch(branches.get('롯데백화점 본점'), /cstrCd=0333/u);
+});
+
+test('모든 지점 전용 엔드포인트는 같은 매장에만 연결하고 미지원 매장에는 다른 지점 링크를 쓰지 않는다', () => {
+  const collectors = ['롯데백화점·롯데아울렛·롯데몰', '신세계백화점', '스타필드·스타필드시티', '갤러리아', 'AK플라자'];
+
+  for (const collector of collectors) {
+    const discovery = buildPopupSourceOverview({
+      registry: { sources: [{ name: collector, currentCollector: collector, implementationStatus: 'active' }] }
+    }).groups[0];
+    const branchEndpoints = discovery.endpoints.filter(item => item.branch);
+    const coverage = branchEndpoints.map((item, index) => ({
+      venueId: `${collector}:${index}`,
+      name: item.branch,
+      collector
+    }));
+    coverage.push({ venueId: `${collector}:unsupported`, name: `${collector} 미지원테스트점`, collector });
+
+    const group = buildPopupSourceOverview({
+      registry: { sources: [{ name: collector, currentCollector: collector, implementationStatus: 'active' }] },
+      coverage: { venues: coverage }
+    }).groups[0];
+    const endpointByBranch = new Map();
+    for (const item of branchEndpoints) {
+      if (!endpointByBranch.has(item.branch)) endpointByBranch.set(item.branch, item.url);
+    }
+    for (const branch of group.branches) {
+      if (branch.name.endsWith('미지원테스트점')) assert.equal(branch.sourceUrl, '');
+      else assert.equal(branch.sourceUrl, endpointByBranch.get(branch.name), `${collector}: ${branch.name}`);
+    }
+  }
 });
