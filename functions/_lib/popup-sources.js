@@ -11,7 +11,9 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
   '롯데백화점·롯데아울렛·롯데몰': [
     ['0001', '롯데백화점 본점'], ['0022', '롯데백화점 노원점'], ['0027', '롯데백화점 센텀시티점'],
     ['0028', '롯데백화점 건대스타시티점'], ['0333', '롯데백화점 광복점'], ['0336', '롯데백화점 안산점'],
-    ['0342', '롯데아울렛 청주점'], ['0344', '롯데백화점 인천점'], ['0399', '롯데백화점 동탄점']
+    ['0342', '롯데아울렛 청주점'], ['0344', '롯데백화점 인천점'], ['0399', '롯데백화점 동탄점'],
+    ['0360', '롯데아울렛 고양점'], ['0347', '롯데아울렛 고양터미널점'],
+    ['0017', '롯데백화점 창원점'], ['0017', '롯데백화점 창원점 신관']
   ].map(([code, branch]) => endpoint(branch, `https://www.lotteshopping.com/store/main?cstrCd=${code}`, `cstrCd=${code} · 공식 지점 페이지의 Shopping News`, branch)),
   '신세계백화점': [
     ['SC00002', '강남점'], ['SC00006', '광주신세계'], ['SC00011', '김해점'], ['SC00013', '대구신세계'],
@@ -115,6 +117,7 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
       const branchKey = normalizedBranch(branch.name);
       const branchRegistrySource = sources.find(source => source.name === branch.sourceName);
       const branchRegistryUrl = branchRegistrySource?.eventUrl || branchRegistrySource?.officialUrl || '';
+      const hasBranchSpecificEndpoints = endpoints.some(item => item.branch);
       const matchingEndpoint = endpoints.find(item => {
         const endpointKey = normalizedBranch(item.branch);
         return endpointKey && branchKey && endpointKey === branchKey;
@@ -129,9 +132,9 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
         addedCount: matchingPopups.filter(item => item.firstSeenAt === latestAddedAt).length,
         includedUrls,
         sourceUrl: matchingEndpoint?.url
-          || branchRegistryUrl
+          || (!hasBranchSpecificEndpoints ? branchRegistryUrl : '')
           || (endpoints.length === 1 && !endpoints[0].branch ? endpoints[0].url : '')
-          || (sources.length === 1 ? dedupedUrls[0]?.url : '')
+          || (!hasBranchSpecificEndpoints && sources.length === 1 ? dedupedUrls[0]?.url : '')
           || ''
       };
     })

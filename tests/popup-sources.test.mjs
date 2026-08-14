@@ -81,10 +81,14 @@ test('AK플라자 백화점과 쇼핑몰 9개 지점의 공식 쇼핑뉴스 링�
 
 test('롯데백화점 지점명에 맞는 공식 지점 코드를 연결한다', () => {
   const result = buildPopupSourceOverview({
-    registry: { sources: [{ name: '롯데', currentCollector: '롯데백화점·롯데아울렛·롯데몰', implementationStatus: 'active' }] },
+    registry: { sources: [{ name: '롯데백화점·롯데아울렛·롯데몰', currentCollector: '롯데백화점·롯데아울렛·롯데몰', implementationStatus: 'active', eventUrl: 'https://www.lotteshopping.com/shoppingNews' }] },
     coverage: { venues: [
       { venueId: 'main', name: '롯데백화점 본점', collector: '롯데백화점·롯데아울렛·롯데몰' },
-      { venueId: 'gwangbok', name: '롯데백화점 광복점', collector: '롯데백화점·롯데아울렛·롯데몰' }
+      { venueId: 'gwangbok', name: '롯데백화점 광복점', collector: '롯데백화점·롯데아울렛·롯데몰' },
+      { venueId: 'goyang', name: '롯데아울렛 고양점', collector: '롯데백화점·롯데아울렛·롯데몰' },
+      { venueId: 'changwon', name: '롯데백화점 창원점', collector: '롯데백화점·롯데아울렛·롯데몰' },
+      { venueId: 'changwon-annex', name: '롯데백화점 창원점 신관', collector: '롯데백화점·롯데아울렛·롯데몰' },
+      { venueId: 'unsupported', name: '롯데백화점 미지원점', collector: '롯데백화점·롯데아울렛·롯데몰' }
     ] }
   });
 
@@ -92,6 +96,10 @@ test('롯데백화점 지점명에 맞는 공식 지점 코드를 연결한다',
   assert.match(branches.get('롯데백화점 본점'), /\/store\/main\?cstrCd=0001/u);
   assert.match(branches.get('롯데백화점 광복점'), /\/store\/main\?cstrCd=0333/u);
   assert.doesNotMatch(branches.get('롯데백화점 본점'), /cstrCd=0333/u);
+  assert.match(branches.get('롯데아울렛 고양점'), /cstrCd=0360/u);
+  assert.match(branches.get('롯데백화점 창원점'), /cstrCd=0017/u);
+  assert.match(branches.get('롯데백화점 창원점 신관'), /cstrCd=0017/u);
+  assert.equal(branches.get('롯데백화점 미지원점'), '');
 });
 
 test('운영콘솔의 지점 수집처는 내부 JSON API가 아닌 사람이 열 수 있는 공식 페이지다', () => {
