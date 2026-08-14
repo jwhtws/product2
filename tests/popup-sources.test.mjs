@@ -71,10 +71,21 @@ test('시설별 최신 갱신 추가 건수와 포함 원본 링크를 계산한
 test('AK플라자 백화점과 쇼핑몰 9개 지점의 공식 쇼핑뉴스 링크를 제공한다', () => {
   const result = buildPopupSourceOverview({
     registry: { sources: [{ name: 'AK플라자', currentCollector: 'AK플라자', implementationStatus: 'active' }] },
+    coverage: { venues: [
+      { venueId: 'ak-wonju', name: '에이케이플라자(주) 원주점', collector: 'AK플라자' },
+      { venueId: 'ak-gwangmyeong', name: '에이케이플라자(주) 광명점', collector: 'AK플라자' },
+      { venueId: 'ak-suwon', name: 'AK플라자수원점', collector: 'AK플라자' }
+    ] },
     popupData: { sources: [{ name: 'AK플라자', status: 'active', count: 5 }] }
   });
 
   assert.equal(result.groups[0].endpoints.filter(item => item.branch).length, 9);
+  assert.equal(result.groups[0].branches.length, 9);
+  assert.deepEqual(new Set(result.groups[0].branches.map(item => item.name)), new Set([
+    '에이케이플라자(주) 원주점', '에이케이플라자(주) 광명점', 'AK플라자수원점',
+    'AK플라자 분당점', 'AK플라자 평택점', 'AK플라자 금정점',
+    'AK플라자 홍대점', 'AK플라자 기흥점', 'AK플라자 세종점'
+  ]));
   assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 수원점' && /category=11&store=02/u.test(item.url)));
   assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 세종점' && /category=11&store=53/u.test(item.url)));
 });

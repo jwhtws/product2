@@ -132,6 +132,23 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
         registryUpdatedAt: ''
       }));
     }
+    const knownBranchKeys = new Set(branches.map(branch => normalizedBranch(branch.name)).filter(Boolean));
+    for (const item of endpoints.filter(endpointItem => endpointItem.branch)) {
+      const endpointKey = normalizedBranch(item.branch);
+      if (!endpointKey || knownBranchKeys.has(endpointKey)) continue;
+      knownBranchKeys.add(endpointKey);
+      branches.push({
+        id: `${collector}:endpoint:${endpointKey}`,
+        sourceName: sources[0]?.name || collector,
+        name: item.branch,
+        region: '',
+        kind: '공식 수집 시설',
+        address: '',
+        status: 'official-feed-monitored',
+        popupCount: 0,
+        registryUpdatedAt: ''
+      });
+    }
     branches = branches.map(branch => {
       const branchKey = normalizedBranch(branch.name);
       const branchRegistrySource = sources.find(source => source.name === branch.sourceName);
