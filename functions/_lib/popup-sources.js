@@ -49,7 +49,7 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
   'AK플라자': [
     ['02', '수원'], ['03', '분당'], ['04', '평택'], ['05', '원주'],
     ['11', '광명'], ['12', '금정'], ['51', '홍대'], ['52', '기흥'], ['53', '세종']
-  ].map(([code, name]) => endpoint(`AK플라자 ${name}점`, `https://www.akplaza.com/board/news/list?category=11&store=${code}`, `쇼핑뉴스 전 페이지 · store=${code}`, `AK플라자 ${name}점`)).concat([
+  ].flatMap(([code, name]) => ['11', '12'].map(category => endpoint(`AK플라자 ${name}점 · 카테고리 ${category}`, `https://www.akplaza.com/board/news/list?category=${category}&store=${code}`, `쇼핑뉴스 전 페이지 · category=${category} · store=${code}`, `AK플라자 ${name}점`))).concat([
     endpoint('AK플라자 전 지점 안내', 'https://www.akplaza.com/', '공식 전 지점 목록')
   ]),
   'NC·뉴코아': [endpoint('이랜드리테일 전 지점 목록', 'https://www.elandretail.com/store01.do', '지점 ID 자동 발견 후 각 지점 쇼핑뉴스 순회')],
@@ -155,25 +155,28 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
       const branchRegistryUrl = branchRegistrySource?.eventUrl || branchRegistrySource?.officialUrl || '';
       const hasBranchSpecificEndpoints = endpoints.some(item => item.branch);
       const genericEndpoint = endpoints.find(item => !item.branch);
-      const matchingEndpoint = endpoints.find(item => {
+      const matchingEndpoints = endpoints.filter(item => {
         const endpointKey = normalizedBranch(item.branch);
         return endpointKey && branchKey && endpointKey === branchKey;
       });
+      const matchingEndpoint = matchingEndpoints[0];
       const matchingPopups = popupRows.filter(item => {
         const popupBranchKey = normalizedBranch(item.branch || item.venue);
         return branchKey && popupBranchKey && (popupBranchKey.includes(branchKey) || branchKey.includes(popupBranchKey));
       });
       const includedUrls = unique(matchingPopups.map(item => item.sourceUrl || item.officialUrl));
+      const sourceUrl = matchingEndpoint?.url
+        || (hasBranchSpecificEndpoints ? genericEndpoint?.url : '')
+        || (!hasBranchSpecificEndpoints ? branchRegistryUrl : '')
+        || (endpoints.length === 1 && !endpoints[0].branch ? endpoints[0].url : '')
+        || (!hasBranchSpecificEndpoints && sources.length === 1 ? dedupedUrls[0]?.url : '')
+        || '';
       return {
         ...branch,
         addedCount: matchingPopups.filter(item => item.firstSeenAt === latestAddedAt).length,
         includedUrls,
-        sourceUrl: matchingEndpoint?.url
-          || (hasBranchSpecificEndpoints ? genericEndpoint?.url : '')
-          || (!hasBranchSpecificEndpoints ? branchRegistryUrl : '')
-          || (endpoints.length === 1 && !endpoints[0].branch ? endpoints[0].url : '')
-          || (!hasBranchSpecificEndpoints && sources.length === 1 ? dedupedUrls[0]?.url : '')
-          || ''
+        sourceUrl,
+        sourceUrls: matchingEndpoints.length ? unique(matchingEndpoints.map(item => item.url)) : sourceUrl ? [sourceUrl] : []
       };
     })
       .sort((left, right) => String(left.region).localeCompare(String(right.region), 'ko-KR') || String(left.name).localeCompare(String(right.name), 'ko-KR'));

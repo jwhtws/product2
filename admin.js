@@ -449,12 +449,13 @@
       return `<details class="popup-source-group">
         <summary><strong>${escapeHtml(group.collector)}</strong><span>시설 ${group.branches.length.toLocaleString('ko-KR')}곳</span><span>이번 갱신 추가 ${addedCount.toLocaleString('ko-KR')}개</span><b class="status ${['failed', 'error', 'unknown'].includes(group.runtimeStatus) ? 'warn' : ''}">${escapeHtml(group.runtimeStatus === 'active' ? '수집 중' : group.runtimeStatus === 'no-results' ? '정상 · 결과 없음' : group.runtimeStatus || '상태 미확인')}</b></summary>
         <div class="popup-source-body"><div class="table-wrap"><table><thead><tr><th>시설</th><th>지역</th><th>현재 포함</th><th>이번 갱신 추가</th><th>포함된 링크</th><th>수집 링크</th></tr></thead><tbody>${group.branches.map(branch => {
-          const sourceUrl = safeExternalUrl(branch.sourceUrl);
+          const sourceUrls = [...new Set((branch.sourceUrls?.length ? branch.sourceUrls : [branch.sourceUrl]).map(safeExternalUrl).filter(Boolean))];
           const includedLinks = (branch.includedUrls || []).map((url, index) => {
             const safeUrl = safeExternalUrl(url);
             return safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">원본 ${index + 1} ↗</a>` : '';
           }).filter(Boolean).join('<br>');
-          return `<tr><td><strong>${escapeHtml(branch.name)}</strong></td><td>${escapeHtml(branch.region || '—')}</td><td>${Number(branch.popupCount || 0).toLocaleString('ko-KR')}개</td><td><strong class="history-added">+${Number(branch.addedCount || 0).toLocaleString('ko-KR')}개</strong></td><td>${includedLinks || '—'}</td><td>${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noreferrer">수집처 열기 ↗</a>` : '—'}</td></tr>`;
+          const sourceLinks = sourceUrls.map((url, index) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">수집처 ${sourceUrls.length > 1 ? index + 1 : ''} 열기 ↗</a>`).join('<br>');
+          return `<tr><td><strong>${escapeHtml(branch.name)}</strong></td><td>${escapeHtml(branch.region || '—')}</td><td>${Number(branch.popupCount || 0).toLocaleString('ko-KR')}개</td><td><strong class="history-added">+${Number(branch.addedCount || 0).toLocaleString('ko-KR')}개</strong></td><td>${includedLinks || '—'}</td><td>${sourceLinks || '—'}</td></tr>`;
         }).join('')}</tbody></table></div></div>
       </details>`;
     }).join('');

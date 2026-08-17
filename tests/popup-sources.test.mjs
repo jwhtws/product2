@@ -79,15 +79,19 @@ test('AK플라자 백화점과 쇼핑몰 9개 지점의 공식 쇼핑뉴스 링�
     popupData: { sources: [{ name: 'AK플라자', status: 'active', count: 5 }] }
   });
 
-  assert.equal(result.groups[0].endpoints.filter(item => item.branch).length, 9);
+  assert.equal(result.groups[0].endpoints.filter(item => item.branch).length, 18);
   assert.equal(result.groups[0].branches.length, 9);
   assert.deepEqual(new Set(result.groups[0].branches.map(item => item.name)), new Set([
     '에이케이플라자(주) 원주점', '에이케이플라자(주) 광명점', 'AK플라자수원점',
     'AK플라자 분당점', 'AK플라자 평택점', 'AK플라자 금정점',
     'AK플라자 홍대점', 'AK플라자 기흥점', 'AK플라자 세종점'
   ]));
-  assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 수원점' && /category=11&store=02/u.test(item.url)));
-  assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 세종점' && /category=11&store=53/u.test(item.url)));
+  assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 수원점 · 카테고리 11' && /category=11&store=02/u.test(item.url)));
+  assert.ok(result.groups[0].endpoints.some(item => item.label === 'AK플라자 세종점 · 카테고리 12' && /category=12&store=53/u.test(item.url)));
+  assert.deepEqual(result.groups[0].branches.find(item => item.name === '에이케이플라자(주) 원주점').sourceUrls, [
+    'https://www.akplaza.com/board/news/list?category=11&store=05',
+    'https://www.akplaza.com/board/news/list?category=12&store=05'
+  ]);
 });
 
 test('롯데백화점 지점명에 맞는 공식 지점 코드를 연결한다', () => {
@@ -133,7 +137,7 @@ test('모든 지점 전용 엔드포인트는 같은 매장에만 연결하고 �
     const discovery = buildPopupSourceOverview({
       registry: { sources: [{ name: collector, currentCollector: collector, implementationStatus: 'active' }] }
     }).groups[0];
-    const branchEndpoints = discovery.endpoints.filter(item => item.branch);
+    const branchEndpoints = discovery.endpoints.filter((item, index, items) => item.branch && items.findIndex(candidate => candidate.branch === item.branch) === index);
     const coverage = branchEndpoints.map((item, index) => ({
       venueId: `${collector}:${index}`,
       name: item.branch,
