@@ -24,7 +24,7 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
     ['0007', '롯데백화점 광주점'], ['0407', '롯데몰 여수점'], ['0332', '롯데아울렛 수완점'],
     ['0021', '롯데아울렛 광주 월드컵점'], ['0025', '롯데백화점 전주점'], ['0342', '롯데아울렛 청주점'],
     ['0344', '롯데백화점 인천점'], ['0336', '롯데백화점 안산점']
-  ].map(([code, branch]) => endpoint(branch, `https://www.lotteshopping.com/store/main?cstrCd=${code}`, `cstrCd=${code} · 공식 지점 페이지의 Shopping News`, branch)).concat([
+  ].map(([code, branch]) => endpoint(branch, `https://www.lotteshopping.com/contents/shpgInfo?cstrCd=${code}&cntsTpCd=C00903`, `cstrCd=${code} · 공식 쇼핑정보의 쇼핑뉴스`, branch)).concat([
     endpoint('롯데 전 지점 안내', 'https://www.lotteshopping.com/store/main', '공식 전 지점 목록')
   ]),
   '신세계백화점': [

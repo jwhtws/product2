@@ -103,17 +103,19 @@ test('롯데백화점 지점명에 맞는 공식 지점 코드를 연결한다',
       { venueId: 'goyang', name: '롯데아울렛 고양점', collector: '롯데백화점·롯데아울렛·롯데몰' },
       { venueId: 'changwon', name: '롯데백화점 창원점', collector: '롯데백화점·롯데아울렛·롯데몰' },
       { venueId: 'changwon-annex', name: '롯데백화점 창원점 신관', collector: '롯데백화점·롯데아울렛·롯데몰' },
+      { venueId: 'ansan', name: '롯데백화점 안산점', collector: '롯데백화점·롯데아울렛·롯데몰' },
       { venueId: 'unsupported', name: '롯데백화점 미지원점', collector: '롯데백화점·롯데아울렛·롯데몰' }
     ] }
   });
 
   const branches = new Map(result.groups[0].branches.map(branch => [branch.name, branch.sourceUrl]));
-  assert.match(branches.get('롯데백화점 본점'), /\/store\/main\?cstrCd=0001/u);
-  assert.match(branches.get('롯데백화점 광복점'), /\/store\/main\?cstrCd=0333/u);
+  assert.match(branches.get('롯데백화점 본점'), /\/contents\/shpgInfo\?cstrCd=0001&cntsTpCd=C00903/u);
+  assert.match(branches.get('롯데백화점 광복점'), /\/contents\/shpgInfo\?cstrCd=0333&cntsTpCd=C00903/u);
   assert.doesNotMatch(branches.get('롯데백화점 본점'), /cstrCd=0333/u);
   assert.match(branches.get('롯데아울렛 고양점'), /cstrCd=0360/u);
   assert.match(branches.get('롯데백화점 창원점'), /cstrCd=0017/u);
   assert.match(branches.get('롯데백화점 창원점 신관'), /cstrCd=0017/u);
+  assert.equal(branches.get('롯데백화점 안산점'), 'https://www.lotteshopping.com/contents/shpgInfo?cstrCd=0336&cntsTpCd=C00903');
   assert.equal(branches.get('롯데백화점 미지원점'), 'https://www.lotteshopping.com/store/main');
 });
 
