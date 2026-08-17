@@ -454,7 +454,9 @@
             const safeUrl = safeExternalUrl(url);
             return safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">원본 ${index + 1} ↗</a>` : '';
           }).filter(Boolean).join('<br>');
-          const sourceLinks = sourceUrls.map((url, index) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">수집처 ${sourceUrls.length > 1 ? index + 1 : ''} 열기 ↗</a>`).join('<br>');
+          const sourceLabel = branch.sourceConnection === 'official-directory' ? '공식 전점 안내 (지점 수집처 미연결)'
+            : branch.sourceConnection === 'shared' ? '공통 수집처' : '수집처';
+          const sourceLinks = sourceUrls.map((url, index) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${sourceLabel}${sourceUrls.length > 1 ? ` ${index + 1}` : ''} 열기 ↗</a>`).join('<br>');
           return `<tr><td><strong>${escapeHtml(branch.name)}</strong></td><td>${escapeHtml(branch.region || '—')}</td><td>${Number(branch.popupCount || 0).toLocaleString('ko-KR')}개</td><td><strong class="history-added">+${Number(branch.addedCount || 0).toLocaleString('ko-KR')}개</strong></td><td>${includedLinks || '—'}</td><td>${sourceLinks || '—'}</td></tr>`;
         }).join('')}</tbody></table></div></div>
       </details>`;

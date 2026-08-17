@@ -132,6 +132,46 @@ test('운영콘솔의 지점 수집처는 내부 JSON API가 아닌 사람이 �
   }
 });
 
+test('시설명 법인·건물 표기를 제거해 실제 지점 수집처에 연결한다', () => {
+  const registry = { sources: [
+    { name: '갤러리아', currentCollector: '갤러리아', implementationStatus: 'active' },
+    { name: '스타필드·스타필드시티', currentCollector: '스타필드·스타필드시티', implementationStatus: 'active' }
+  ] };
+  const coverage = { venues: [
+    { venueId: 'galleria-gwanggyo', name: '한화갤러리아(주) 광교점', collector: '갤러리아' },
+    { venueId: 'galleria-east', name: '갤러리아백화점(동관)', collector: '갤러리아' },
+    { venueId: 'starfield-wirye', name: '스타필드 시티 위례점', collector: '스타필드·스타필드시티' },
+    { venueId: 'starfield-myeongji', name: '스타필드 시티 명지점', collector: '스타필드·스타필드시티' }
+  ] };
+  const groups = new Map(buildPopupSourceOverview({ registry, coverage }).groups.map(group => [group.collector, group]));
+  const galleria = new Map(groups.get('갤러리아').branches.map(branch => [branch.name, branch]));
+  const starfield = new Map(groups.get('스타필드·스타필드시티').branches.map(branch => [branch.name, branch]));
+  assert.match(galleria.get('한화갤러리아(주) 광교점').sourceUrl, /store-info\/gwanggyo/u);
+  assert.match(galleria.get('갤러리아백화점(동관)').sourceUrl, /store-info\/luxuryhall/u);
+  assert.match(starfield.get('스타필드 시티 위례점').sourceUrl, /\/wirye\/eventBenefit\/events/u);
+  assert.match(starfield.get('스타필드 시티 명지점').sourceUrl, /\/myeongji\/eventBenefit\/events/u);
+  for (const branch of [...galleria.values(), ...starfield.values()]) assert.equal(branch.sourceConnection, 'exact');
+});
+
+test('공통 수집기도 시설 종류에 맞는 실제 공식 수집처만 표시한다', () => {
+  const collector = '이마트·트레이더스';
+  const result = buildPopupSourceOverview({
+    registry: { sources: [{ name: collector, currentCollector: collector, implementationStatus: 'active', eventUrl: 'https://store.emart.com/event/event.do' }] },
+    coverage: { venues: [
+      { venueId: 'emart', name: '이마트 성수점', collector },
+      { venueId: 'traders', name: '트레이더스 홀세일클럽 고양점', collector }
+    ] }
+  }).groups[0];
+  const branches = new Map(result.branches.map(branch => [branch.name, branch]));
+  assert.deepEqual(branches.get('이마트 성수점').sourceUrls, [
+    'https://store.emart.com/main/main.do', 'https://store.emart.com/news/notice_list.do'
+  ]);
+  assert.deepEqual(branches.get('트레이더스 홀세일클럽 고양점').sourceUrls, [
+    'https://store.traders.co.kr/main/main.do'
+  ]);
+  assert.ok(result.branches.every(branch => !branch.sourceUrls.includes('https://store.emart.com/event/event.do')));
+});
+
 test('모든 지점 전용 엔드포인트는 같은 매장에만 연결하고 미지원 매장에는 다른 지점 링크를 쓰지 않는다', () => {
   const collectors = ['롯데백화점·롯데아울렛·롯데몰', '신세계백화점', '스타필드·스타필드시티', '갤러리아', 'AK플라자'];
 

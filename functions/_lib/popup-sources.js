@@ -67,9 +67,14 @@ const COLLECTOR_ENDPOINTS = Object.freeze({
   '롯데 공식 블로그': [endpoint('롯데 공식 블로그 RSS', 'https://blog.lotte.co.kr/feed/', '공식 글에서 행사·지점 추출')]
 });
 
-const normalizedBranch = value => String(value || '').toLocaleLowerCase('ko-KR')
-  .replace(/\(주\)|주식회사|롯데쇼핑|롯데|신세계|이마트|한화|백화점|프리미엄|아울렛|스타필드시티|스타필드|시티|갤러리아|ak플라자|에이케이플라자/gu, '')
-  .replace(/[^0-9a-z가-힣]/giu, '');
+const normalizedBranch = value => {
+  const normalized = String(value || '').toLocaleLowerCase('ko-KR')
+    .replace(/\s+/gu, '')
+    .replace(/\(주\)|주식회사|롯데쇼핑|롯데|신세계|이마트|한화|백화점|프리미엄|아울렛|스타필드시티|스타필드|시티|갤러리아|ak플라자|에이케이플라자/gu, '')
+    .replace(/[^0-9a-z가-힣]/giu, '')
+    .replace(/점$/u, '');
+  return ['동관', '서관'].includes(normalized) ? '명품관' : normalized;
+};
 
 export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues = {}, popupData = {} } = {}) {
   const registrySources = Array.isArray(registry.sources) ? registry.sources : [];
@@ -160,6 +165,12 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
         return endpointKey && branchKey && endpointKey === branchKey;
       });
       const matchingEndpoint = matchingEndpoints[0];
+      let sharedEndpointUrls = unique(endpoints.filter(item => !item.branch && !/\/robots\.txt(?:\?|$)/u.test(item.url)).map(item => item.url));
+      if (collector === '이마트·트레이더스') {
+        sharedEndpointUrls = /트레이더스/u.test(branch.name)
+          ? ['https://store.traders.co.kr/main/main.do']
+          : ['https://store.emart.com/main/main.do', 'https://store.emart.com/news/notice_list.do'];
+      }
       const matchingPopups = popupRows.filter(item => {
         const popupBranchKey = normalizedBranch(item.branch || item.venue);
         return branchKey && popupBranchKey && (popupBranchKey.includes(branchKey) || branchKey.includes(popupBranchKey));
@@ -167,16 +178,23 @@ export function buildPopupSourceOverview({ registry = {}, coverage = {}, venues 
       const includedUrls = unique(matchingPopups.map(item => item.sourceUrl || item.officialUrl));
       const sourceUrl = matchingEndpoint?.url
         || (hasBranchSpecificEndpoints ? genericEndpoint?.url : '')
+        || (!hasBranchSpecificEndpoints ? sharedEndpointUrls[0] : '')
         || (!hasBranchSpecificEndpoints ? branchRegistryUrl : '')
         || (endpoints.length === 1 && !endpoints[0].branch ? endpoints[0].url : '')
         || (!hasBranchSpecificEndpoints && sources.length === 1 ? dedupedUrls[0]?.url : '')
         || '';
+      const sourceConnection = matchingEndpoints.length ? 'exact'
+        : hasBranchSpecificEndpoints && genericEndpoint?.url ? 'official-directory'
+          : sourceUrl ? 'shared' : 'unlinked';
       return {
         ...branch,
         addedCount: matchingPopups.filter(item => item.firstSeenAt === latestAddedAt).length,
         includedUrls,
         sourceUrl,
-        sourceUrls: matchingEndpoints.length ? unique(matchingEndpoints.map(item => item.url)) : sourceUrl ? [sourceUrl] : []
+        sourceConnection,
+        sourceUrls: matchingEndpoints.length ? unique(matchingEndpoints.map(item => item.url))
+          : !hasBranchSpecificEndpoints && sharedEndpointUrls.length ? sharedEndpointUrls
+            : sourceUrl ? [sourceUrl] : []
       };
     })
       .sort((left, right) => String(left.region).localeCompare(String(right.region), 'ko-KR') || String(left.name).localeCompare(String(right.name), 'ko-KR'));
