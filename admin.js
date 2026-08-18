@@ -416,17 +416,21 @@
       ...(data.stats?.failedSources || []),
       ...(data.sources || []).filter(source => ['failed', 'error'].includes(source.status)).map(source => source.name)
     ].filter(Boolean))];
-    const changeDates = [...new Set(allRows.flatMap(item => [
-      item.firstSeenAt,
-      statusKey(item) === 'ended' ? item.endDate : ''
-    ]).filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort((left, right) => right.localeCompare(left));
+    const updatedAtTime = Date.parse(data.updatedAt || '');
+    const refreshDate = Number.isFinite(updatedAtTime)
+      ? new Date(updatedAtTime + 9 * 60 * 60 * 1000).toISOString().slice(0, 10) : '';
+    const changeDates = [...new Set([
+      refreshDate,
+      ...allRows.flatMap(item => [item.firstSeenAt, statusKey(item) === 'ended' ? item.endDate : ''])
+    ].filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))].sort((left, right) => right.localeCompare(left));
     const popupChanges = changeDates.map(date => ({
       date,
+      refreshed: date === refreshDate,
       added: allRows.filter(item => item.firstSeenAt === date)
         .sort((left, right) => String(left.name).localeCompare(String(right.name), 'ko-KR')),
       removed: allRows.filter(item => statusKey(item) === 'ended' && item.endDate === date)
         .sort((left, right) => String(left.name).localeCompare(String(right.name), 'ko-KR'))
-    })).filter(entry => entry.added.length || entry.removed.length);
+    })).filter(entry => entry.refreshed || entry.added.length || entry.removed.length);
     const collectionRows = (items, emptyMessage) => items.length ? `<div class="table-wrap"><table><thead><tr><th>팝업</th><th>장소</th><th>운영 기간</th><th>상태</th></tr></thead><tbody>${items.map(item =>
       `<tr><td><a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.name)}</strong></a></td><td>${escapeHtml(item.venue)}<br><small>${escapeHtml(item.region || '—')}</small></td><td>${escapeHtml(item.startDate)}<br>${escapeHtml(item.endDate)}</td><td><span class="status ${statusKey(item) === 'ended' ? 'warn' : ''}">${phase(item)}</span></td></tr>`
     ).join('')}</tbody></table></div>` : `<div class="empty-admin">${emptyMessage}</div>`;
@@ -482,7 +486,7 @@
       <article class="panel popup-collection-overview"><h2>이번 갱신 수집 현황 <small>${sourceOverview.latestAddedAt ? `${escapeHtml(sourceOverview.latestAddedAt)} 최초 확인 기준` : '신규 수집일 없음'}</small></h2><p>현재 수집 중인 모든 브랜드와 시설, 시설별 신규 추가 건수와 실제 포함 원본을 표시합니다.</p>${sourceOverview.error ? `<div class="source-alert"><strong>수집 현황 일부를 불러오지 못했습니다.</strong><span>${escapeHtml(sourceOverview.error)}</span></div>` : ''}<div class="popup-source-groups">${collectionOverview || '<div class="empty-admin">등록된 수집 브랜드와 시설이 없습니다.</div>'}</div></article>
       <article class="panel popup-history"><h2>일자별 팝업 추가·삭제 내역 <small>삭제 = 운영 종료로 진행 목록에서 제외</small></h2>
         ${popupChanges.length ? `<div class="history-list">${popupChanges.map((entry, index) => `<details ${index === 0 ? 'open' : ''}>
-          <summary><strong>${escapeHtml(entry.date)}</strong><span class="history-added">추가 ${entry.added.length.toLocaleString('ko-KR')}개</span><span class="history-removed">삭제 ${entry.removed.length.toLocaleString('ko-KR')}개</span></summary>
+          <summary><strong>${escapeHtml(entry.date)}</strong>${entry.refreshed ? '<span class="status">갱신 완료</span>' : ''}<span class="history-added">추가 ${entry.added.length.toLocaleString('ko-KR')}개</span><span class="history-removed">삭제 ${entry.removed.length.toLocaleString('ko-KR')}개</span></summary>
           <div class="history-columns">
             <section><h3>추가된 팝업</h3>${collectionRows(entry.added, '이 날짜에 추가된 팝업이 없습니다.')}</section>
             <section><h3>삭제된 팝업 <small>운영 종료</small></h3>${collectionRows(entry.removed, '이 날짜에 종료된 팝업이 없습니다.')}</section>
