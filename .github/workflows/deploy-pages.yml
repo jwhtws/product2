@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "10 22 * * *"
   workflow_dispatch:
 
 permissions:
@@ -15,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  deploy-console:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -31,3 +33,29 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: 8d2f3113c1898979a0d13c5b2a840809
           command: pages deploy . --project-name=product2 --branch=main --commit-dirty=true
+
+  deploy-mukdang:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out product1
+        uses: actions/checkout@v4
+        with:
+          repository: jwhtws/product1
+          ref: main
+          path: mukdang
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate Mukdang
+        working-directory: mukdang
+        run: npm run check
+
+      - name: Deploy Mukdang to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 8d2f3113c1898979a0d13c5b2a840809
+          command: pages deploy mukdang --project-name=product1 --branch=main --commit-dirty=true
